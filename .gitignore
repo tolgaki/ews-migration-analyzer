@@ -398,3 +398,7 @@ FodyWeavers.xsd
 
 # JetBrains Rider
 *.sln.iml
+
+# Additional files to ignore
+src/Ews.App.Usage/appSettings.local.json
+src/Ews.App.Usage/Usage-Data/
