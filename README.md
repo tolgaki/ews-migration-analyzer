@@ -1,14 +1,26 @@
-# Project
+# EWS Migration Tools
 
-> This repo has been populated by an initial template to help get you started. Please
-> make sure to update the content to build a great experience for community-building.
+## Overview
 
-As the maintainer of this project, please make a few updates:
+Exchange Web Services (EWS) is a SOAP-based API that is used to access Exchange Online and Exchange Server. Microsoft has announced the deprecation of EWS for Exchange Online in favor of Microsoft Graph API, which provides access to many Microsoft 365 workloads including Exchange Online.
 
-- Improving this README.MD file to provide a great experience
-- Updating SUPPORT.MD with content about this project's support experience
-- Understanding the security reporting process in SECURITY.MD
-- Remove this section from the README
+This repo contains tools to help you identify apps within your tenant that are using EWS and help you migrate them to Microsoft Graph API.
+
+## EWS Usage Reporting
+
+M365 provides [reports of EWS usage](https://admin.cloud.microsoft/?#/reportsUsage/EWSWeeklyUsage) in the Microsoft 365 admin center. This your first port of call to identify apps using EWS. The reports are available in the Microsoft 365 admin center under Reports > Usage > Exchange Web Services (EWS) Weekly Usage for tenants in the worldwide cloud.
+
+If your tenant is in an isolated cloud (e.g. government or sovereign cloud), these reports are not available in the admin center at this time. 
+
+The tools in this repo can be used to identify EWS usage in all clouds with access to the Microsoft Graph AuditLog API.
+
+The EWS Usage Reporting tools are located in folder `/src/Ews.AppUsage`.
+
+## EWS Code Analyzer
+
+Once you have identified applications in your tenant using EWS, you can use the EWS Code Analyzer to identify all EWS references in your code and get suggestions for migration to equivalent Microsoft Graph APIs.
+
+The EWS Code Analyzer is located in folder `/src/Ews.CodeAnalyzer`.
 
 ## Contributing
 
