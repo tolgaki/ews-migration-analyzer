@@ -1,0 +1,34 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+	<PropertyGroup>
+		<TargetFramework>netstandard2.0</TargetFramework>
+		<IsRoslynComponent>true</IsRoslynComponent>
+		<IsPackable>false</IsPackable>
+		<RootNamespace>Ews.Analyzer</RootNamespace>
+		<GeneratePackageOnBuild>False</GeneratePackageOnBuild>
+		<Title>EWS Migration Helper</Title>
+	</PropertyGroup>
+
+	<ItemGroup>
+	  <Compile Remove="EwsMappingRepository.cs" />
+	</ItemGroup>
+
+	<ItemGroup>
+	  <None Remove="tracking-list-baseline-full.json" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<PackageReference Include="Microsoft.CodeAnalysis.CSharp.Workspaces" Version="4.11.0" />
+		<PackageReference Include="System.Text.Json" Version="9.0.0" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<ProjectReference Include="..\Ews.Analyzer\Ews.Analyzer.csproj" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<Compile Update="CodeFixResources.Designer.cs" DesignTime="True" AutoGen="True" DependentUpon="CodeFixResources.resx" />
+		<EmbeddedResource Update="CodeFixResources.resx" Generator="ResXFileCodeGenerator" LastGenOutput="CodeFixResources.Designer.cs" />
+	</ItemGroup>
+
+</Project>

@@ -1,0 +1,11 @@
+{
+  "profiles": {
+    "Ews.Analyzer.CodeFixes": {
+      "commandName": "Project"
+    },
+    "RoslynComponent": {
+      "commandName": "DebugRoslynComponent",
+      "targetProject": "..\\Ews.Test.App\\Ews.Test.App.csproj"
+    }
+  }
+}
