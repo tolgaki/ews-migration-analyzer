@@ -401,5 +401,6 @@ FodyWeavers.xsd
 
 # Additional files to ignore
 src/Ews.App.Usage/appSettings.local.json
-src/Ews.App.Usage/Usage-Data/
+src/Ews.App.Usage/Usage-Data/*
+!src/Ews.App.Usage/Usage-Data/EWSUsage.csv
 src/Ews.Code.Analyzer/Ews.Test.App/appsettings.local.json

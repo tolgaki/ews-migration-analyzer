@@ -1033,10 +1033,10 @@ function getFileName {
         Write-Verbose "Path '$OutputPath' already exists"
     }
     if ([string]::IsNullOrEmpty($Name)) {
-        $CSVfilename = "$($OutputPath)Ews-Impersonation-Results.csv"
+        $CSVfilename = "$($OutputPath)Ews_Impersonation-Results.csv"
     }
     else {
-        $CSVfilename = "$($OutputPath)Ews-Impersonation-Results-$($Name).csv"
+        $CSVfilename = "$($OutputPath)Ews_Impersonation-Results-$($Name).csv"
     }
     if ((Test-Path($CSVfilename)) -and $Operation -like "*Query*") {
         Remove-Item $CSVfilename -Confirm:$false -Force
@@ -1129,7 +1129,7 @@ function GetAppsByApi {
             }
         }
     }
-    $Script:ApiPermissions | Export-Csv "$OutputPath\EWS-EntraAppRegistrations-$((Get-Date).ToString("yyyyMMddhhmmss")).csv" -NoTypeInformation
+    $Script:ApiPermissions | Export-Csv "$OutputPath\EWSEntraAppRegistrations-$((Get-Date).ToString("yyyyMMddhhmmss")).csv" -NoTypeInformation
 }
 
 function CreateAuditQuery {
@@ -1194,10 +1194,10 @@ switch ($Operation) {
                     $StartSearch = '{0:yyyy-MM-ddTHH:mm:ssZ}' -f $StartTime
                     $CurrentProgress = $ProgressPreference
                     #$CurrentView = $PSStyle.Progress.View
-                    $ProgressPreference = "Continue"
+                    $ProgressPreference = "SilentlyContinue"
         
                     # Set the filter for the sign-in log query
-                    Write-Progress -Activity "Getting sign-in activity for $($Appid)" -CurrentOperation "Searching between $($StartSearch) and $($EndSearch)"
+                    # Write-Progress -Activity "Getting sign-in activity for $($Appid)" -CurrentOperation "Searching between $($StartSearch) and $($EndSearch)"
                     $Query = "auditLogs/signIns?`$filter=createdDateTime ge $StartSearch and createdDateTime le $EndSearch and appId eq '$($AppId)' and (signInEventTypes/any(t:t eq 'interactiveUser') or signInEventTypes/any(t:t eq 'nonInteractiveUser') or signInEventTypes/any(t:t eq 'servicePrincipal'))"
                     $Script:SignInEvents = New-Object System.Collections.ArrayList
                     $results = Invoke-GraphApiRequest -Query $Query -AccessToken $Script:Token -GraphApiUrl $APIResource -Endpoint beta
@@ -1325,14 +1325,15 @@ switch ($Operation) {
         Write-Host "Checking the sign-in activity for the applications..." -ForegroundColor Green
         $TotalApps = $Apps.Count
         $x = 1
+        $ProgressPreference = "SilentlyContinue"
         $CurrentProgress = $ProgressPreference
         #$CurrentView = $PSStyle.Progress.View
-        $ProgressPreference = "Continue"
+        $ProgressPreference = "SilentlyContinue"
         #$PSStyle.Progress.View = "Classic"
-        $OutputFile = "$OutputPath\App-SignInActivity-$((Get-Date).ToString("yyyyMMddhhmmss")).csv"
+        $OutputFile = "$OutputPath\AppSignInActivity-$((Get-Date).ToString("yyyyMMddhhmmss")).csv"
         Write-Host "Starting query at $(Get-Date)" -ForegroundColor Cyan
         foreach ($App in $Apps) {
-            Write-Progress -Activity "Getting sign-in activity for service principals" -CurrentOperation "Processing $($App.ApplicationDisplayName)" -PercentComplete (($x / $TotalApps) * 100)
+            #Write-Progress -Activity "Getting sign-in activity for service principals" -CurrentOperation "Processing $($App.ApplicationDisplayName)" -PercentComplete (($x / $TotalApps) * 100)
             $q = Invoke-GraphApiRequest -GraphApiUrl $APIResource -Query "reports/servicePrincipalSignInActivities?`$filter=appId eq '$($App.ApplicationId)'" -AccessToken $Script:Token -Endpoint beta
             if ([string]::IsNullOrEmpty($q.Content.value.appId)) {
                 $SpActivity = [PSCustomObject]@{
