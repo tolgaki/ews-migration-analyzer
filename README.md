@@ -26,6 +26,12 @@ The EWS Code Analyzer is located in folder `/src/Ews.CodeAnalyzer`.
 
 See the [EWS Code Analyzer](src/Ews.Code.Analyzer/README.md) for more information on how to set up and run the tools.
 
+## Learn More
+
+- [Deprecation of Exchange Web Services in Exchange Online](https://aka.ms/ews1pageGH)
+- [Microsoft 365 Reports in the admin center – EWS usage](https://aka.ms/EwsAdminReports)
+- [Exchange Web Services (EWS) to Microsoft Graph API mappings](https://aka.ms/ewsMapGH)
+
 ## Contributing
 
 This project welcomes contributions and suggestions.  Most contributions require you to agree to a
