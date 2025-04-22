@@ -16,11 +16,15 @@ The tools in this repo can be used to identify EWS usage in all clouds with acce
 
 The EWS Usage Reporting tools are located in folder `/src/Ews.AppUsage`.
 
+See the [EWS App Usage Reporting](src/Ews.App.Usage/README.md) for more information on how to set up and run the tools.
+
 ## EWS Code Analyzer
 
 Once you have identified applications in your tenant using EWS, you can use the EWS Code Analyzer to identify all EWS references in your code and get suggestions for migration to equivalent Microsoft Graph APIs.
 
 The EWS Code Analyzer is located in folder `/src/Ews.CodeAnalyzer`.
+
+See the [EWS Code Analyzer](src/Ews.Code.Analyzer/README.md) for more information on how to set up and run the tools.
 
 ## Contributing
 
