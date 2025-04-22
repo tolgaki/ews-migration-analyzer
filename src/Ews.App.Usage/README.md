@@ -13,6 +13,8 @@ There tool relies on Graph APIs to retrieve Application registrations and their 
 - `AuditLog.Read.All`
 - `Application.Read.All`
 
+The API permissions should look like this:
+
 ![App Registration](../../docs/images/AuditApp-AdminConsentGranted.png)
 
 It is recommended to create the client secret with a short expiration time that covers the time needed to run the investigation.
@@ -39,6 +41,8 @@ There are two parts to the report generation:
 1. **Collect EWS usage data**: This is done by running the `Collect-EWS-App-Usage.ipynb` notebook. It will collect the EWS usage data and save it to the OutputPath specified in the `appSettings.json` file.
 
 2. **Generate the reports**: This is done by running the `Report-EWS-App-Usage.ipynb` notebook. It will read the data collected in the previous step aggregate it and display the results within the notebook and update the `EWS-Usage.csv` file used by the Power BI report `EWS-Usage.pbix`.
+
+> Note: The script used to download the application and audit data in `Collect-EWS-App-Usage.ipynb` is `Scripts/Find-EwsUsage.ps1`. It can be run independently of the notebook and supports a number of different queries that are not used here. It was copied from Jim Martin's [Exchange Usage Reporting repo](https://aka.ms/ewsUsage). See the documentation there for more details on additional functionality.
 
 To see the current data in Power BI, click the `Refresh` button in the command bar. The report will then refresh and show the current data.
 
