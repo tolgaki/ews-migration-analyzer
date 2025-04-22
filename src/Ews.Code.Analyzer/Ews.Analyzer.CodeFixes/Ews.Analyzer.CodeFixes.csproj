@@ -6,16 +6,9 @@
 		<IsPackable>false</IsPackable>
 		<RootNamespace>Ews.Analyzer</RootNamespace>
 		<GeneratePackageOnBuild>False</GeneratePackageOnBuild>
-		<Title>EWS Migration Helper</Title>
+		<Title>EWS Code Analyzer</Title>
+		<EnforceExtendedAnalyzerRule>true</EnforceExtendedAnalyzerRule>
 	</PropertyGroup>
-
-	<ItemGroup>
-	  <Compile Remove="EwsMappingRepository.cs" />
-	</ItemGroup>
-
-	<ItemGroup>
-	  <None Remove="tracking-list-baseline-full.json" />
-	</ItemGroup>
 
 	<ItemGroup>
 		<PackageReference Include="Microsoft.CodeAnalysis.CSharp.Workspaces" Version="4.11.0" />
