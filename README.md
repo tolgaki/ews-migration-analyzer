@@ -10,7 +10,7 @@ This repo contains tools to help you identify apps within your tenant that are u
 
 M365 provides [reports of EWS usage](https://admin.cloud.microsoft/?#/reportsUsage/EWSWeeklyUsage) in the Microsoft 365 admin center. This your first port of call to identify apps using EWS. The reports are available in the Microsoft 365 admin center under Reports > Usage > Exchange Web Services (EWS) Weekly Usage for tenants in the worldwide cloud.
 
-If your tenant is in an isolated cloud (e.g. government or sovereign cloud), these reports are not available in the admin center at this time. 
+If your tenant is in an isolated cloud (e.g. government or sovereign cloud), these reports are not available in the admin center at this time.
 
 The tools in this repo can be used to identify EWS usage in all clouds with access to the Microsoft Graph AuditLog API.
 
@@ -49,7 +49,6 @@ contact [opencode@microsoft.com](mailto:opencode@microsoft.com) with any additio
 ## Trademarks
 
 This project may contain trademarks or logos for projects, products, or services. Authorized use of Microsoft 
-trademarks or logos is subject to and must follow 
-[Microsoft's Trademark & Brand Guidelines](https://www.microsoft.com/en-us/legal/intellectualproperty/trademarks/usage/general).
+trademarks or logos is subject to and must follow [Microsoft's Trademark & Brand Guidelines](https://www.microsoft.com/en-us/legal/intellectualproperty/trademarks/usage/general).
 Use of Microsoft trademarks or logos in modified versions of this project must not cause confusion or imply Microsoft sponsorship.
 Any use of third-party trademarks or logos are subject to those third-party's policies.
