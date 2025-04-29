@@ -14,7 +14,7 @@ If your tenant is in an isolated cloud (e.g. government or sovereign cloud), the
 
 The tools in this repo can be used to identify EWS usage in all clouds with access to the Microsoft Graph AuditLog API.
 
-The EWS Usage Reporting tools are located in folder `/src/Ews.AppUsage`.
+The EWS Usage Reporting tools are located in folder `/src/Ews.AppUsage` and build on [Jim Martin](https://github.com/jmartinmsft)'s excellent and versatile scripts for detecting EWS usage in Exchange Online at [Exchange App Usage Reporting](https://github.com/jmartinmsft/Exchange-App-Usage-Reporting).
 
 See the [EWS App Usage Reporting](src/Ews.App.Usage/README.md) for more information on how to set up and run the tools.
 
