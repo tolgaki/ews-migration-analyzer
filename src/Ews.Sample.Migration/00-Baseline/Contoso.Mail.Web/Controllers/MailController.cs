@@ -1,15 +1,11 @@
+using System.Diagnostics;
+using System.Security.Claims;
+using Contoso.Mail.Models;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.Logging;
-using Microsoft.Identity.Web;
-using Microsoft.Identity.Web.Resource;
-using Microsoft.Identity.Web.TokenCacheProviders.InMemory;
 using Microsoft.Exchange.WebServices.Data;
-using System.Net;
-using System.Security.Claims;
+using Microsoft.Identity.Web;
 using Task = System.Threading.Tasks.Task;
-using Contoso.Mail.Models;
 
 namespace Contoso.Mail.Controllers;
 
@@ -59,7 +55,7 @@ public class MailController : Controller
             // Add debug logging for message IDs
             foreach (var mail in mailItems)
             {
-                _logger.LogInformation("Email ID: {EmailId}, UniqueId: {UniqueId}, ChangeKey: {ChangeKey}, Subject: {Subject}", 
+                _logger.LogInformation("Email ID: {EmailId}, UniqueId: {UniqueId}, ChangeKey: {ChangeKey}, Subject: {Subject}",
                     mail.Id, mail.Id.UniqueId, mail.Id.ChangeKey, mail.Subject);
             }
 
@@ -109,30 +105,30 @@ public class MailController : Controller
             // URL decode the ID before using it in the filter
             string decodedId = Uri.UnescapeDataString(id);
             _logger.LogInformation("Searching for email with decoded UniqueId: {UniqueId}", decodedId);
-            
+
             // Create a search filter
             var filter = new SearchFilter.IsEqualTo(ItemSchema.Id, decodedId);
             var view = new ItemView(1);
-            
+
             // Find the email
             var findResults = await Task.Run(() => service.FindItems(WellKnownFolderName.Inbox, filter, view));
-            
+
             if (findResults.Items.Count == 0)
             {
                 _logger.LogWarning("Email with UniqueId {UniqueId} not found", decodedId);
                 TempData["ErrorMessage"] = "Email not found. It may have been moved or deleted.";
                 return RedirectToAction(nameof(Index));
             }
-            
+
             // Bind to the email with full details
             var emailId = findResults.Items[0].Id;
             _logger.LogInformation("Found email with ID: {EmailId}, binding with full properties", emailId);
-            
+
             var propertySet = new PropertySet(BasePropertySet.FirstClassProperties)
             {
                 RequestedBodyType = BodyType.Text
             };
-            
+
             var email = await Task.Run(() => EmailMessage.Bind(service, emailId, propertySet));
             _logger.LogInformation("Successfully bound to email: {Subject}", email.Subject);
 
@@ -142,7 +138,7 @@ public class MailController : Controller
                 Id = email.Id.UniqueId, // Store the UniqueId
                 Subject = $"RE: {email.Subject}",
                 To = email.From.Address,
-                Body = $"\n\n----------\nFrom: {email.From.Name} ({email.From.Address})\nSent: {email.DateTimeSent:g}\nSubject: {email.Subject}\n\n{email.Body}"
+                Body = $"Hello from EWS!\n\n----------\nFrom: {email.From.Name} ({email.From.Address})\nSent: {email.DateTimeSent:g}\nSubject: {email.Subject}\n\n{email.Body}"
             };
 
             _logger.LogInformation("Reply model created, returning view");
@@ -179,7 +175,7 @@ public class MailController : Controller
     public async Task<IActionResult> SendReply(EmailReplyModel model)
     {
         _logger.LogInformation("SendReply action called for ID: {Id}", model.Id);
-        
+
         if (!ModelState.IsValid)
         {
             _logger.LogWarning("Model state is invalid");
@@ -201,24 +197,24 @@ public class MailController : Controller
             // URL decode the ID before using it in the filter
             string decodedId = Uri.UnescapeDataString(model.Id);
             _logger.LogInformation("Searching for email with decoded UniqueId: {UniqueId}", decodedId);
-            
+
             // Create a search filter
             var filter = new SearchFilter.IsEqualTo(ItemSchema.Id, decodedId);
             var view = new ItemView(1);
-            
+
             // Find the email
             var findResults = await Task.Run(() => service.FindItems(WellKnownFolderName.Inbox, filter, view));
-            
+
             if (findResults.Items.Count == 0)
             {
                 _logger.LogWarning("Email with UniqueId {UniqueId} not found for reply", decodedId);
                 ModelState.AddModelError(string.Empty, "Email not found. It may have been moved or deleted.");
                 return View("Reply", model);
             }
-            
+
             // Get the email ID
             var emailId = findResults.Items[0].Id;
-            
+
             // Bind to the email with full details
             var propertySet = new PropertySet(BasePropertySet.FirstClassProperties);
             var originalEmail = await Task.Run(() => EmailMessage.Bind(service, emailId, propertySet));
@@ -226,10 +222,10 @@ public class MailController : Controller
             // Create a reply message
             _logger.LogInformation("Creating reply to email: {Subject}", originalEmail.Subject);
             var reply = await Task.Run(() => originalEmail.CreateReply(false));
-            
+
             // Set the body of the reply
             reply.Body = model.Body;
-            
+
             // Send the reply
             _logger.LogInformation("Sending reply...");
             await Task.Run(() => reply.SendAndSaveCopy());
@@ -260,5 +256,11 @@ public class MailController : Controller
             ModelState.AddModelError(string.Empty, $"Error sending reply: {ex.Message}");
             return View("Reply", model);
         }
+    }
+
+    [ResponseCache(Duration = 0, Location = ResponseCacheLocation.None, NoStore = true)]
+    public IActionResult Error()
+    {
+        return View(new ErrorViewModel { RequestId = Activity.Current?.Id ?? HttpContext.TraceIdentifier });
     }
 }

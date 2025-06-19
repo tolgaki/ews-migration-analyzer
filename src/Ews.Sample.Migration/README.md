@@ -1,4 +1,4 @@
-# 00-Baseline for Contoso Mail Sample Application
+# Tutorial - Migrating from EWS to Microsoft Graph API with GitHub Copilot
 
 ## Overview
 
