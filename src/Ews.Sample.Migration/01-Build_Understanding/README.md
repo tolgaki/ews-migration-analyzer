@@ -80,24 +80,7 @@ After confirming that we want Copilot to save the file to the solution folder, i
 
 This is a good time to commit the changes to the repository. We now have a better understanding of the code, a requirements document that describes the functionality of the application, and comments that explain the code logic. This will help us in the next steps of the migration process.
 
-### UI Tests
-
-### Observability
-
-### Modularity
-
-### GitHub Copilot Instructions
-
-
-## Features Added
-
-1. **EWS Analyzer**: Added EWS Analyzer to understand where and how EWS is used in the application.
-1. **Code Comments**: Added comments to the code to improve understanding of the application logic and flow.
-1. **UI Tests**: Added Playwright tests to ensure the application functions correctly and to catch regressions in the UI.
-1. **Observability**: Integrated Aspire to provide better observability and insights into the application's performance and behavior.
-1. **Modularity**: Refactored the code to improve modularity and maintainability, making it easier to understand and extend in the future.
-1. **GitHub Copilot Instructions**: Added AI instructions to guide GitHub Copilot toward generating code that is aligned with coding guidelines and team conventions.
-
 ## Next Steps
 
-1. Implement EWS components with Graph API
+1. Add instrumentation
+1. Add UI Tests
