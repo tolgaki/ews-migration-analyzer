@@ -10,6 +10,39 @@ The other improvement we should make now before we start changing the code to re
 
 ### Instrumentation with Aspire
 
+Adding Aspire to the solution is easy to do:
+
+1. Add new `Aspire ServiceDefaults` project to the solution
+1. Add new `Aspire AppHost` project to the solution
+1. In the `AppHost` project add a project reference to `Contoso.Mail.Web`
+1. In `Contoso.Mail.Web` add a project reference to `ServiceDefaults`
+1. In `Contoso.Mail.Web\Program.cs` after line 9 (`var builder = WebApplication.CreateBuilder(args);`) add `builder.AddServiceDefaults();`
+1. In the `AppHost` project after line 1 add `var web builder.AddProject<Projects.Contoso_Mail_Web>("mail-web);`
+1. Select `AppHost` as the startup project
+1. Start the application (`F5`)
+
+#### Launch
+
+Starting the application will launch a command window. In the log there will be a link to the Aspire dashboard
+
+![Launch window](../../../docs/images/Migration-Aspire-Launch.png)
+
+When you open the link, the browser should bring up the Aspire dashboard and the `mail-web` application should be starting up or already be running.
+
+![Aspire dashboard](../../../docs/images/Migration-Aspire-Dashboard.png)
+
+From here you can launch the web site, view logs and traces and dig into metrics for your application.
+
+![Aspire traces](../../../docs/images/Migration-Aspire-LogDetails.png)
+
+In the most recent versions of Aspire (v0.9.2 and later) you can also access GitHub Copilot from the dashboard to help explain error messages and provide suggestions to improve observability and resilience for your application.
+
+![Aspire Copilot](../../../docs/images/Migration-Aspire-Copilot.png)
+
+![Aspire Copilot](../../../docs/images/Migration-Aspire-Copilot-Improve-Resilience.png)
+
+With that we are in a good position to understand and detect issues on the operational side of the application. Let's turn to the user experience and make sure we can have the same level of confidence about how our changes affect the users.
+
 ### UI Tests with Playwright
 
 ## Next Steps

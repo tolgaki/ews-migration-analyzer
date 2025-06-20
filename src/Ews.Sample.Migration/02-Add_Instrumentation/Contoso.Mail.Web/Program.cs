@@ -8,6 +8,8 @@ public partial class Program // Make Program public and in global namespace for 
     {
         var builder = WebApplication.CreateBuilder(args);
 
+        builder.AddServiceDefaults();
+
         // Add services to the container.
         builder.Services
             .AddAuthentication(OpenIdConnectDefaults.AuthenticationScheme)
