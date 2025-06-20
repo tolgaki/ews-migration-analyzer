@@ -14,6 +14,17 @@ While all the migration steps described in this sample can be performed manually
 
 We hope that learning about using AI tools like GitHub Copilot on what would otherwise be a tedious process will benefit your teams twofold by eliminating a dangerous security vulnerability and set you up for success with AI tools on future projects.
 
+## Table of Contents
+
+- [Getting Started](#getting-started)
+  - [Prerequisites](#prerequisites)
+- [Setting the Baseline](./00-Baseline/README.md)
+- [Build Understanding with GitHub Copilot](./01-Build_Understanging/README.md)
+- [Adding Instrumentation with .NET Aspire](./02-Add_Instrumentation/README.md)
+- [Adding E2E Tests with Playwright](./03-Add_Tests/README.md)
+- [Refactor for Modularity with Copilot](README.md#coming-soon)
+- [Reimplement EWS Components with Graph API and GitHub Copilot](README.md#coming-soon)
+
 ## Getting Started
 
 ### Prerequisites
@@ -33,3 +44,5 @@ We hope that learning about using AI tools like GitHub Copilot on what would oth
 1. Take note of the following values from the app registration:
    - Application (client) ID
    - Directory (tenant) ID
+
+### Coming Soon

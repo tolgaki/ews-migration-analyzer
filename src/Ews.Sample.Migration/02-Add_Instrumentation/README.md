@@ -43,9 +43,7 @@ In the most recent versions of Aspire (v0.9.2 and later) you can also access Git
 
 With that we are in a good position to understand and detect issues on the operational side of the application. Let's turn to the user experience and make sure we can have the same level of confidence about how our changes affect the users.
 
-### UI Tests with Playwright
-
 ## Next Steps
-
+1. Add E2E Tests with Playwright
 1. Refactor application for modularity
 1. Implement EWS components with Graph API
