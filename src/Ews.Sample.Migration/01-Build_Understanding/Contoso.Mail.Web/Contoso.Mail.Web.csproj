@@ -9,6 +9,10 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="Ews.Analyzer" Version="1.0.0">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
     <PackageReference Include="Microsoft.Exchange.WebServices.NETStandard" Version="1.1.3" />
     <PackageReference Include="Microsoft.Identity.Web" Version="2.19.0" />
     <PackageReference Include="Microsoft.Identity.Web.UI" Version="2.19.0" />

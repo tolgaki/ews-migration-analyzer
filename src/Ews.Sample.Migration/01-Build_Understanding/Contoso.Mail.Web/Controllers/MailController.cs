@@ -9,6 +9,9 @@ using Task = System.Threading.Tasks.Task;
 
 namespace Contoso.Mail.Controllers;
 
+/// <summary>
+/// Controller for handling mailbox operations such as viewing, replying, and sending replies to emails using EWS.
+/// </summary>
 [Authorize]
 public class MailController : Controller
 {
@@ -16,6 +19,12 @@ public class MailController : Controller
     private readonly ITokenAcquisition _tokenAcquisition;
     private readonly ILogger<MailController> _logger;
 
+    /// <summary>
+    /// Initializes a new instance of the <see cref="MailController"/> class.
+    /// </summary>
+    /// <param name="config">The application configuration.</param>
+    /// <param name="tokenAcquisition">The token acquisition service for authentication.</param>
+    /// <param name="logger">The logger instance.</param>
     public MailController(IConfiguration config, ITokenAcquisition tokenAcquisition, ILogger<MailController> logger)
     {
         _config = config;
@@ -23,6 +32,10 @@ public class MailController : Controller
         _logger = logger;
     }
 
+    /// <summary>
+    /// Retrieves and displays the first 10 emails from the user's mailbox inbox.
+    /// </summary>
+    /// <returns>An <see cref="IActionResult"/> that renders the mailbox view with a list of recent emails, or an error view if retrieval fails.</returns>
     public async Task<IActionResult> Index()
     {
         var user = User as ClaimsPrincipal;
@@ -79,6 +92,11 @@ public class MailController : Controller
         }
     }
 
+    /// <summary>
+    /// Displays a reply form for a specific email, pre-filling the recipient, subject, and quoted message.
+    /// </summary>
+    /// <param name="id">The unique identifier of the email to reply to (EWS UniqueId).</param>
+    /// <returns>An <see cref="IActionResult"/> that renders the reply view with the email pre-filled for response, or redirects to the mailbox if not found.</returns>
     [HttpGet]
     public async Task<IActionResult> Reply(string id)
     {
@@ -170,6 +188,11 @@ public class MailController : Controller
         }
     }
 
+    /// <summary>
+    /// Sends the user's reply to the selected email.
+    /// </summary>
+    /// <param name="model">The <see cref="EmailReplyModel"/> containing reply details including recipient, subject, and message body.</param>
+    /// <returns>An <see cref="IActionResult"/> that redirects to the mailbox on success, or returns the reply view with errors on failure.</returns>
     [HttpPost]
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> SendReply(EmailReplyModel model)
@@ -258,6 +281,10 @@ public class MailController : Controller
         }
     }
 
+    /// <summary>
+    /// Displays a generic error page with request details for troubleshooting.
+    /// </summary>
+    /// <returns>An <see cref="IActionResult"/> that renders the error view with request information.</returns>
     [ResponseCache(Duration = 0, Location = ResponseCacheLocation.None, NoStore = true)]
     public IActionResult Error()
     {
