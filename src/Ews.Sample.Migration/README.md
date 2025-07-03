@@ -46,3 +46,6 @@ We hope that learning about using AI tools like GitHub Copilot on what would oth
    - Directory (tenant) ID
 
 ### Coming Soon
+
+- Refactor for Modularity with Copilot
+- Reimplement EWS Components with Graph API and GitHub Copilot
