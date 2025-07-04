@@ -102,7 +102,7 @@ public class MailController : Controller
     {
         _logger.LogInformation("Reply action called with ID: {Id}", id);
 
-        if (string.IsNullOrEmpty(id))
+        if (string.IsNullOrWhiteSpace(id))
         {
             _logger.LogWarning("Email ID is null or empty");
             return BadRequest("Email ID is required");

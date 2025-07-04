@@ -28,6 +28,7 @@ The solution consists of the following projects:
 - **Playwright** - End-to-end testing framework
 - **TypeScript** - Used for Playwright test implementation
 - **xUnit** - Unit testing framework
+- **NSubstitute** - Mocking Framework
 
 ## Unit Testing with xUnit
 
