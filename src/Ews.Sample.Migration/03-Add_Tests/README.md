@@ -1,16 +1,8 @@
-# 03-Add Tests with XUNit and Playwright
+# 03-Add Unit Tests
 
 ## Overview
 
-The solution in this folder adds E2E tests using [Playwright](https://playwright.dev/) to ensure all critical user flows are captured and any changes to the user experience are detected early.
-
-It will also add unit tests using [XUnit](https://xunit.net/) to cover some of the business logic that does not need to reside with the EWS code. This will help ensure that the application remains stable as we refactor and replace EWS components with Microsoft Graph API.
-
-### Why Playwright?
-
-Playwright is a great tool for automating user interface tests across platforms and browsers. It allows you to write tests that simulate user interactions with the application, ensuring that the user experience remains consistent even as the underlying code changes. Playwright executes tests against the running application, so it can cover more ground per test than typical unit and integration tests.
-
-Playwright also supports multiple languages, including C#, TypeScript/JavaScript, and Python, making it flexible for different development environments. However, because new features are first developed on TypeScript and then ported to other languages, the TypeScript version has the most comprehensive feature set. In particular the Playwright UI is only available for TypeScript at this time, which makes it the best choice for this project.
+The solution in this folder adds unit tests for the controller and business logic. I'll be using the[XUnit](https://xunit.net/) framework and [NSubstitute](https://nsubstitute.github.io/) but because the majority of tests is created by GitHub Copilot, feel free to substitute your own favorite testing frameworks. The instructions will apply. This will help ensure that the application remains stable as we refactor and replace EWS references with Microsoft Graph API calls.
 
 ## Step-by-Step Guide
 
@@ -28,12 +20,12 @@ Add Copilot instructions in .github/copilot-instructions.md in the root of the s
 
 If you want to change something about the application architecture, you can tweak the file directly or ask GitHub Copilot to make the updates.
 
-We'll use this approach to ensure best practices are followed for the xunit and Playwright tests we are about to create.
+We'll use this approach to ensure best practices are followed for the xUnit tests we are about to create. If you prefer other frameworks, you can adjust the prompt accordingly. The subsequent steps will respect your choice.
 
 The following prompt should have the desired effect:
 
 ```text
-Add best practices for xunit and Playwright tests to the .github/copilot-instructions.md file.
+Add best practices for xUnit  tests and NSubstitute to the .github/copilot-instructions.md file.
 ```
 
 From this point forward, the copilot-instructions.md file will be automatically added to the references for each prompt you run. You can revisit it at any time if you notice patterns you want to change globally. For more information on how to use the copilot-instructions.md file, see the [GitHub Copilot documentation](https://docs.github.com/en/copilot/coding-with-copilot/configuring-copilot-for-your-repository).
@@ -43,20 +35,55 @@ From this point forward, the copilot-instructions.md file will be automatically 
 To add unit tests simply run the following prompt:
 
 ```text
-Add unit tests for the business logic in the Contoso.Mail.Web project in a new test project
+Write unit tests for all methods in #MailController.cs.
 ```
 
-This should result in a new test project using xunit as prescribed in `copilot-instructions.md`, add the project reference to the `Contoso.Mail.Web` project, and add a test class with some sample tests. It will also add the necessary NuGet packages to the test project.
+![Ask Copilot to write tests](../../../docs/images/Migrations-UnitTests-CopilotWriteTest.png)
 
-In the build I used, GitHub Copilot got stuck while adding the web project reference to the test project. I stopped the prompt, added the reference manually and then asked Copilot to continue. Sometimes it's easier to make the gesture than trying to get Copilot to fix its mistakes.
+This should result in a new test project using xUnit and NSubstitute as prescribed in `copilot-instructions.md`, add the project reference to the `Contoso.Mail.Web` project, and add a test class with some sample tests. It will also add the necessary NuGet packages to the test project.
 
-After running the the build, I received a number of errors that were easily fixed. One was an amiguous reference between EWS.Task and System.Threading.Tasks.Task. GitHub Copilot suggested the correct fix.
+In the build I used, GitHub Copilot got stuck while adding the web project reference to the test project. I stopped the prompt, added the reference manually and then asked Copilot to continue. Sometimes it's easier to execute a function in the IDE than trying to iterate prompts to get Copilot to fix mistakes.
 
+After the tests were created, running the the build, showed a few errors that were easily fixed. A common one, which is likely to occur during refactoring as well is the ambiguous reference between `Microsoft.Exchange.WebServices.Data.Task` and `System.Threading.Tasks.Task`. GitHub Copilot suggested the correct fix options of aliasing Task to System.Threading.Tasks.Task or fully qualifying the type. Because there are many references to System.Threading.Tasks.Task in the code, I chose the alias option and Copilot added the following line to the top of the test class:
 
+```csharp
+using Task = System.Threading.Tasks.Task;
+```
 
+### Run and Review Tests
 
+The models used by GitHub Copilot evolve and your mileage may vary depending on the the model and version you are using. With Claude Sonnet 4, GitHub Copilot generated 55 tests in the `Contoso.Mail.Web.Tests` project, which is a good start. It's important to run and review the test results to understand if the errors are because of the test d
+esign or if they are actually detecting errors in the system under test. You can run the tests using the test explorer in Visual Studio or by running `dotnet test` from the command line.
 
-### UI Tests with Playwright
+![First Pass Unit Test Failures](../../../docs/images/Migration-UnitTestFailures.png)
+
+The test run revealed a number of failed tests with similar errors related to issues with the NSubstitute mocks. Future models might do better here but for now, we have to address these issues iteratively.
+
+In the command bar of the Test Explorer message panel is the option to Ask Copilot to about the failure. In this case, the analysis was correct and I could ask Copilot to fix the issue with the test and others like it in a single prompt.
+
+After that only one test failed.`Reply_WithWhiteSpaceId_ReturnsBadRequest` failed in 3 of the 4 cases Copilot generated.
+
+![Reply With WhiteSpace ID Test Failure](../../../docs/images/Migration-UnitTests-WhiteSpaceFailures.png)
+
+A quick lock at the test results and the parameter values showed that the test worked for empty string but not for other white space characters. Sure enought, the code in the controller checked for string.IsNullOrEmpty but not for other white space characters. Changing the controller code to use `string.IsNullOrWhiteSpace` fixed the issue and the test passed.
+
+![All tests pass](../../../docs/images/Migration-UnitTests-AllTestsPass.png)
+
+### Code Coverage
+
+One reliable measure of the quality of unit tests is code coverage. The tests generated by GitHub Copilot provide a good starting point for coverage but do not cover all code paths. You can use the Code Coverage feature in Visual Studio to see which lines of code are covered by the tests.
+
+![Code Coverage Results](../../../docs/images/Migration-UnitTests-CodeCoverage.png)
+
+The initial set of tests provides good coverage for validation code in the controllers but does not cover the code that handles authentication and calls into the EWS API.
+
+![Code Coverage Example](../../../docs/images/Migration-UnitTests-CodeCoverage-Reply.png)
+
+This is expected and highlights an area that will benefit from refactoring. The additional challenge with testing the interaction with EWS is that it requires a live connection to Exchange Online to fully test the code. This is not ideal for unit tests, which should be isolated from external dependencies. We will address this in the next steps by refactoring the application to use interfaces and dependency injection, allowing us to mock the EWS API calls in the tests.
+
+Another way to improve the code coverage is to add integration tests that run against a live Exchange Online instance or UI tests using a framework like [Playwright](https://playwright.dev/). This will allow us to test the interaction with EWS and ensure that the application works as expected in a real-world scenario.
+
+For now we'll shift our focus to refactoring the application to make it more modular, testable and enable us to swap out the EWS implementation with a Graph API implementation.
 
 ## Next Steps
 
