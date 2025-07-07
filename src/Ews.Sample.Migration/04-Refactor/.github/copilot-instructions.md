@@ -30,6 +30,273 @@ The solution consists of the following projects:
 - **xUnit** - Unit testing framework
 - **NSubstitute** - Mocking Framework
 
+## Microsoft Graph API Best Practices
+
+As part of the migration from EWS to Microsoft Graph API, follow these best practices when implementing Graph API functionality:
+
+### 1. Authentication and Authorization
+
+#### Use Microsoft Identity Platform
+- Use `Microsoft.Identity.Web` for authentication in ASP.NET Core applications
+- Implement proper token acquisition and caching
+- Use incremental consent for scopes when possible
+// Configure Microsoft Identity Web in Program.cs
+builder.Services
+    .AddAuthentication(OpenIdConnectDefaults.AuthenticationScheme)
+    .AddMicrosoftIdentityWebApp(builder.Configuration.GetSection("AzureAd"))
+    .EnableTokenAcquisitionToCallDownstreamApi()
+    .AddMicrosoftGraph(builder.Configuration.GetSection("MicrosoftGraph"))
+    .AddInMemoryTokenCaches();
+#### Scope Management
+- Request only the minimum required permissions
+- Use application permissions sparingly and only when delegated permissions are insufficient
+- Common mail scopes:
+  - `Mail.Read` - Read user's mail
+  - `Mail.ReadWrite` - Read and write user's mail
+  - `Mail.Send` - Send mail on behalf of user
+
+### 2. GraphServiceClient Configuration
+
+#### Dependency Injection Setup// Register GraphServiceClient with proper authentication
+builder.Services.AddScoped<GraphServiceClient>(provider =>
+{
+    var tokenAcquisition = provider.GetRequiredService<ITokenAcquisition>();
+    var authProvider = new TokenAcquisitionAuthenticationProvider(tokenAcquisition, scopes);
+    return new GraphServiceClient(authProvider);
+});
+#### Error Handling
+- Always wrap Graph API calls in try-catch blocks
+- Handle specific Graph exceptions:
+  - `ServiceException` for Graph API errors
+  - `MsalUiRequiredException` for authentication challenges
+  - `MicrosoftIdentityWebChallengeUserException` for re-authentication
+try
+{
+    var messages = await graphServiceClient.Me.Messages
+        .GetAsync(requestConfiguration => requestConfiguration.QueryParameters.Top = count);
+    return messages.Value;
+}
+catch (ServiceException ex) when (ex.Error.Code == "ItemNotFound")
+{
+    return null;
+}
+catch (MsalUiRequiredException)
+{
+    // Handle re-authentication
+    throw;
+}
+### 3. Efficient Data Retrieval
+
+#### Use $select to limit returned propertiesvar messages = await graphServiceClient.Me.Messages
+    .GetAsync(requestConfiguration =>
+    {
+        requestConfiguration.QueryParameters.Select = ["id", "subject", "from", "receivedDateTime", "bodyPreview"];
+        requestConfiguration.QueryParameters.Top = 10;
+    });
+#### Use $filter for server-side filteringvar unreadMessages = await graphServiceClient.Me.Messages
+    .GetAsync(requestConfiguration =>
+    {
+        requestConfiguration.QueryParameters.Filter = "isRead eq false";
+        requestConfiguration.QueryParameters.Top = 50;
+    });
+#### Implement Paginationvar allMessages = new List<Message>();
+var messages = await graphServiceClient.Me.Messages.GetAsync();
+
+while (messages?.Value?.Count > 0)
+{
+    allMessages.AddRange(messages.Value);
+    
+    if (messages.OdataNextLink != null)
+    {
+        messages = await graphServiceClient.Me.Messages
+            .WithUrl(messages.OdataNextLink)
+            .GetAsync();
+    }
+    else
+    {
+        break;
+    }
+}
+### 4. Request Optimization
+
+#### Batch Requests
+Use batch requests for multiple operations:var batchRequestContent = new BatchRequestContentCollection(graphServiceClient);
+var request1 = graphServiceClient.Me.Messages["messageId1"].ToGetRequestInformation();
+var request2 = graphServiceClient.Me.Messages["messageId2"].ToGetRequestInformation();
+
+var batch = await batchRequestContent.AddBatchRequestStepAsync(request1);
+await batchRequestContent.AddBatchRequestStepAsync(request2);
+
+var response = await graphServiceClient.Batch.PostAsync(batchRequestContent);
+#### Delta Queries for Change Tracking// Initial request with delta
+var deltaMessages = await graphServiceClient.Me.Messages.Delta.GetAsync();
+
+// Store the deltaLink for future requests
+var deltaLink = deltaMessages.OdataDeltaLink;
+
+// Later, get only changes
+var changes = await graphServiceClient.Me.Messages.Delta
+    .WithUrl(deltaLink)
+    .GetAsync();
+### 5. Rate Limiting and Throttling
+
+#### Implement Retry Logicpublic async Task<T> ExecuteWithRetryAsync<T>(Func<Task<T>> operation, int maxRetries = 3)
+{
+    for (int attempt = 0; attempt < maxRetries; attempt++)
+    {
+        try
+        {
+            return await operation();
+        }
+        catch (ServiceException ex) when (ex.Error.Code == "TooManyRequests")
+        {
+            if (attempt == maxRetries - 1) throw;
+            
+            var retryAfter = ex.ResponseHeaders?.RetryAfter?.Delta ?? TimeSpan.FromSeconds(Math.Pow(2, attempt));
+            await Task.Delay(retryAfter);
+        }
+    }
+    throw new InvalidOperationException("Max retries exceeded");
+}
+#### Respect Throttling Headers
+- Monitor `Retry-After` headers
+- Implement exponential backoff
+- Use the `RateLimitHandler` from Microsoft Graph SDK
+
+### 6. Testing Graph API Code
+
+#### Unit Testing with Mocking[Fact]
+public async Task GetMessagesAsync_ShouldReturnMessages()
+{
+    // Arrange
+    var mockGraphServiceClient = Substitute.For<GraphServiceClient>();
+    var mockMessages = new MessageCollectionResponse
+    {
+        Value = new List<Message> { new Message { Subject = "Test" } }
+    };
+    
+    mockGraphServiceClient.Me.Messages.GetAsync(Arg.Any<Action<RequestConfiguration<MessagesRequestBuilder.MessagesRequestBuilderGetQueryParameters>>>())
+        .Returns(mockMessages);
+    
+    var service = new GraphEmailService(mockGraphServiceClient);
+    
+    // Act
+    var result = await service.GetMessagesAsync();
+    
+    // Assert
+    Assert.Single(result);
+}
+#### Integration Testing
+- Use test tenants for integration tests
+- Mock Graph responses for unit tests
+- Test authentication flows separately
+
+### 7. Performance Best Practices
+
+#### Connection Management
+- Reuse GraphServiceClient instances
+- Configure HttpClient properly in DI container
+- Use connection pooling
+
+#### Caching Strategies// Cache frequently accessed data
+[MemoryCache(Duration = 300)] // 5 minutes
+public async Task<User> GetCurrentUserAsync()
+{
+    return await graphServiceClient.Me.GetAsync();
+}
+#### Minimize Roundtrips
+- Use `$expand` to include related data
+- Batch multiple requests when possible
+- Use delta queries for change tracking
+
+### 8. Security Considerations
+
+#### Token Management
+- Use token caching to avoid unnecessary authentication requests
+- Implement proper token refresh logic
+- Store tokens securely
+
+#### Least Privilege Principle
+- Request minimal required permissions
+- Use delegated permissions when possible
+- Regularly audit and review permissions
+
+#### Data Protection
+- Don't log sensitive email content
+- Implement proper error handling without exposing sensitive data
+- Follow GDPR and other privacy regulations
+
+### 9. Migration from EWS
+
+#### Service Interface Compatibility
+When migrating from EWS, maintain the same service interfaces:public interface IEmailService
+{
+    Task<IList<EmailMessage>> GetInboxEmailsAsync(string userEmail, int count = 10);
+    Task<EmailMessage?> GetEmailByIdAsync(string emailId, string userEmail);
+    Task<bool> SendReplyAsync(EmailReplyModel replyModel, string userEmail);
+}
+
+// Graph implementation
+public class GraphEmailService : IEmailService
+{
+    private readonly GraphServiceClient _graphServiceClient;
+    
+    public GraphEmailService(GraphServiceClient graphServiceClient)
+    {
+        _graphServiceClient = graphServiceClient;
+    }
+    
+    // Implement interface methods using Graph API
+}
+#### Data Model Mapping
+Create mapping between EWS models and Graph models:public static class MessageMapper
+{
+    public static EmailMessage ToEmailMessage(this Message graphMessage)
+    {
+        return new EmailMessage
+        {
+            Id = graphMessage.Id,
+            Subject = graphMessage.Subject,
+            From = graphMessage.From?.EmailAddress?.Address,
+            ReceivedDateTime = graphMessage.ReceivedDateTime?.DateTime,
+            Body = graphMessage.Body?.Content
+        };
+    }
+}
+### 10. Monitoring and Logging
+
+#### Request Logging// Add logging to Graph requests
+public class LoggingGraphEmailService : IEmailService
+{
+    private readonly GraphServiceClient _graphServiceClient;
+    private readonly ILogger<LoggingGraphEmailService> _logger;
+    
+    public async Task<IList<EmailMessage>> GetInboxEmailsAsync(string userEmail, int count = 10)
+    {
+        _logger.LogInformation("Fetching {Count} emails for user {UserEmail}", count, userEmail);
+        
+        try
+        {
+            var result = await _graphServiceClient.Me.Messages
+                .GetAsync(config => config.QueryParameters.Top = count);
+            
+            _logger.LogInformation("Successfully retrieved {Count} emails", result.Value?.Count ?? 0);
+            return result.Value?.Select(m => m.ToEmailMessage()).ToList() ?? new List<EmailMessage>();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to retrieve emails for user {UserEmail}", userEmail);
+            throw;
+        }
+    }
+}
+#### Performance Monitoring
+- Track Graph API response times
+- Monitor rate limit usage
+- Log throttling events
+
+By following these best practices, you'll ensure a successful migration from EWS to Microsoft Graph API while maintaining performance, security, and reliability.
+
 ## Unit Testing with xUnit
 
 The project uses xUnit for unit testing to ensure code quality and facilitate the transition from EWS to Microsoft Graph API. Here's guidance on working with unit tests:
