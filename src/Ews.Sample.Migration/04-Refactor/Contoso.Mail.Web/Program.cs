@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.OpenIdConnect;
 using Microsoft.Identity.Web;
+using Contoso.Mail.Web.Services;
 
 public partial class Program // Make Program public and in global namespace for integration tests
 {
@@ -16,8 +17,13 @@ public partial class Program // Make Program public and in global namespace for 
             .AddMicrosoftIdentityWebApp(builder.Configuration.GetSection("AzureAd"))
             .EnableTokenAcquisitionToCallDownstreamApi()
             .AddInMemoryTokenCaches();
+        
         builder.Services.AddControllersWithViews();
         builder.Services.AddRazorPages();
+
+        // Register email services
+        builder.Services.AddScoped<IExchangeServiceFactory, ExchangeServiceFactory>();
+        builder.Services.AddScoped<IEmailService, EwsEmailService>();
 
         var app = builder.Build();
 

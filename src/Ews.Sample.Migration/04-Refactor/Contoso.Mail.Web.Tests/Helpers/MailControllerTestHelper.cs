@@ -1,12 +1,11 @@
 using System.Security.Claims;
 using Contoso.Mail.Controllers;
 using Contoso.Mail.Models;
+using Contoso.Mail.Web.Services;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.ViewFeatures;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
-using Microsoft.Identity.Web;
 using NSubstitute;
 using NSubstitute.ExceptionExtensions;
 
@@ -17,21 +16,16 @@ namespace Contoso.Mail.Web.Tests.Helpers;
 /// </summary>
 public class MailControllerTestHelper
 {
-    public IConfiguration Configuration { get; }
-    public ITokenAcquisition TokenAcquisition { get; }
+    public IEmailService EmailService { get; }
     public ILogger<MailController> Logger { get; }
     public MailController Controller { get; }
 
     public MailControllerTestHelper()
     {
-        Configuration = Substitute.For<IConfiguration>();
-        TokenAcquisition = Substitute.For<ITokenAcquisition>();
+        EmailService = Substitute.For<IEmailService>();
         Logger = Substitute.For<ILogger<MailController>>();
         
-        Controller = new MailController(Configuration, TokenAcquisition, Logger);
-        
-        // Setup default configuration
-        Configuration["Ews:Url"].Returns("https://outlook.office365.com/EWS/Exchange.asmx");
+        Controller = new MailController(EmailService, Logger);
         
         SetupControllerContext();
     }
@@ -130,49 +124,90 @@ public class MailControllerTestHelper
     }
 
     /// <summary>
-    /// Configures the mock token acquisition to return a successful token.
+    /// Configures the mock email service to return successful email list.
     /// </summary>
-    /// <param name="token">The token to return (defaults to fake-access-token)</param>
-    public void SetupSuccessfulTokenAcquisition(string token = "fake-access-token")
+    /// <param name="emails">The list of emails to return (defaults to empty list)</param>
+    public void SetupSuccessfulEmailRetrieval(IList<Microsoft.Exchange.WebServices.Data.EmailMessage>? emails = null)
     {
-        TokenAcquisition.GetAccessTokenForUserAsync(Arg.Any<string[]>())
-            .Returns(Task.FromResult(token));
+        emails ??= new List<Microsoft.Exchange.WebServices.Data.EmailMessage>();
+        EmailService.GetInboxEmailsAsync(Arg.Any<string>(), Arg.Any<int>())
+            .Returns(emails);
     }
 
     /// <summary>
-    /// Configures the mock token acquisition to throw a MicrosoftIdentityWebChallengeUserException.
+    /// Configures the mock email service to return a successful reply model.
     /// </summary>
-    public void SetupTokenAcquisitionChallenge()
+    /// <param name="replyModel">The reply model to return (defaults to a valid model)</param>
+    public void SetupSuccessfulReplyModelCreation(EmailReplyModel? replyModel = null)
+    {
+        replyModel ??= CreateValidEmailReplyModel();
+        EmailService.CreateReplyModelAsync(Arg.Any<string>(), Arg.Any<string>())
+            .Returns(replyModel);
+    }
+
+    /// <summary>
+    /// Configures the mock email service to return successful reply sending.
+    /// </summary>
+    /// <param name="success">Whether the reply sending should succeed (defaults to true)</param>
+    public void SetupSuccessfulReplySending(bool success = true)
+    {
+        EmailService.SendReplyAsync(Arg.Any<EmailReplyModel>(), Arg.Any<string>())
+            .Returns(success);
+    }
+
+    /// <summary>
+    /// Configures the mock email service to throw a MicrosoftIdentityWebChallengeUserException.
+    /// </summary>
+    public void SetupEmailServiceChallenge()
     {
         var msalException = new Microsoft.Identity.Client.MsalUiRequiredException("error", "description");
-        TokenAcquisition.GetAccessTokenForUserAsync(Arg.Any<string[]>())
-            .ThrowsAsync(new MicrosoftIdentityWebChallengeUserException(msalException, new[] { "scope" }));
+        var challengeException = new Microsoft.Identity.Web.MicrosoftIdentityWebChallengeUserException(msalException, new[] { "scope" });
+        
+        EmailService.GetInboxEmailsAsync(Arg.Any<string>(), Arg.Any<int>())
+            .ThrowsAsync(challengeException);
+        EmailService.CreateReplyModelAsync(Arg.Any<string>(), Arg.Any<string>())
+            .ThrowsAsync(challengeException);
+        EmailService.SendReplyAsync(Arg.Any<EmailReplyModel>(), Arg.Any<string>())
+            .ThrowsAsync(challengeException);
     }
 
     /// <summary>
-    /// Configures the mock token acquisition to throw a MsalUiRequiredException.
+    /// Configures the mock email service to throw a MsalUiRequiredException.
     /// </summary>
-    public void SetupTokenAcquisitionMsalException()
+    public void SetupEmailServiceMsalException()
     {
-        TokenAcquisition.GetAccessTokenForUserAsync(Arg.Any<string[]>())
-            .ThrowsAsync(new Microsoft.Identity.Client.MsalUiRequiredException("error", "description"));
+        var msalException = new Microsoft.Identity.Client.MsalUiRequiredException("error", "description");
+        
+        EmailService.GetInboxEmailsAsync(Arg.Any<string>(), Arg.Any<int>())
+            .ThrowsAsync(msalException);
+        EmailService.CreateReplyModelAsync(Arg.Any<string>(), Arg.Any<string>())
+            .ThrowsAsync(msalException);
+        EmailService.SendReplyAsync(Arg.Any<EmailReplyModel>(), Arg.Any<string>())
+            .ThrowsAsync(msalException);
     }
 
     /// <summary>
-    /// Configures the mock token acquisition to throw a general exception.
+    /// Configures the mock email service to throw a general exception.
     /// </summary>
-    public void SetupTokenAcquisitionException(string message = "Test exception")
+    public void SetupEmailServiceException(string message = "Test exception")
     {
-        TokenAcquisition.GetAccessTokenForUserAsync(Arg.Any<string[]>())
-            .ThrowsAsync(new Exception(message));
+        var exception = new Exception(message);
+        
+        EmailService.GetInboxEmailsAsync(Arg.Any<string>(), Arg.Any<int>())
+            .ThrowsAsync(exception);
+        EmailService.CreateReplyModelAsync(Arg.Any<string>(), Arg.Any<string>())
+            .ThrowsAsync(exception);
+        EmailService.SendReplyAsync(Arg.Any<EmailReplyModel>(), Arg.Any<string>())
+            .ThrowsAsync(exception);
     }
 
     /// <summary>
-    /// Sets up a custom EWS URL configuration.
+    /// Configures the email service to return null for reply model creation (email not found).
     /// </summary>
-    public void SetupCustomEwsUrl(string? url)
+    public void SetupEmailNotFound()
     {
-        Configuration["Ews:Url"].Returns(url);
+        EmailService.CreateReplyModelAsync(Arg.Any<string>(), Arg.Any<string>())
+            .Returns((EmailReplyModel?)null);
     }
 
     /// <summary>
@@ -214,18 +249,33 @@ public class MailControllerTestHelper
     }
 
     /// <summary>
-    /// Verifies that token acquisition was called with the correct scopes.
+    /// Verifies that the email service was called to get inbox emails.
     /// </summary>
-    public void VerifyTokenAcquisitionCalled()
+    public void VerifyGetInboxEmailsCalled(string expectedEmail, int expectedCount = 10)
     {
-        TokenAcquisition.Received(1).GetAccessTokenForUserAsync(
-            Arg.Is<string[]>(scopes => scopes.Contains("https://outlook.office365.com/.default")));
+        EmailService.Received(1).GetInboxEmailsAsync(expectedEmail, expectedCount);
+    }
+
+    /// <summary>
+    /// Verifies that the email service was called to create a reply model.
+    /// </summary>
+    public void VerifyCreateReplyModelCalled(string expectedEmailId, string expectedUserEmail)
+    {
+        EmailService.Received(1).CreateReplyModelAsync(expectedEmailId, expectedUserEmail);
+    }
+
+    /// <summary>
+    /// Verifies that the email service was called to send a reply.
+    /// </summary>
+    public void VerifySendReplyCalled(EmailReplyModel expectedModel, string expectedUserEmail)
+    {
+        EmailService.Received(1).SendReplyAsync(expectedModel, expectedUserEmail);
     }
 
     /// <summary>
     /// Verifies that an error was logged.
     /// </summary>
-    public void VerifyErrorLogged(string expectedMessage)
+    public void VerifyErrorLogged()
     {
         Logger.Received().Log(
             LogLevel.Error,
@@ -238,7 +288,7 @@ public class MailControllerTestHelper
     /// <summary>
     /// Verifies that a warning was logged.
     /// </summary>
-    public void VerifyWarningLogged(string expectedMessage)
+    public void VerifyWarningLogged()
     {
         Logger.Received().Log(
             LogLevel.Warning,
@@ -251,7 +301,7 @@ public class MailControllerTestHelper
     /// <summary>
     /// Verifies that information was logged.
     /// </summary>
-    public void VerifyInformationLogged(string expectedMessage)
+    public void VerifyInformationLogged()
     {
         Logger.Received().Log(
             LogLevel.Information,

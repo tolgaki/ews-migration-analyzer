@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Security.Claims;
 using Contoso.Mail.Models;
+using Contoso.Mail.Web.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Exchange.WebServices.Data;
@@ -10,25 +11,22 @@ using Task = System.Threading.Tasks.Task;
 namespace Contoso.Mail.Controllers;
 
 /// <summary>
-/// Controller for handling mailbox operations such as viewing, replying, and sending replies to emails using EWS.
+/// Controller for handling mailbox operations such as viewing, replying, and sending replies to emails using the email service layer.
 /// </summary>
 [Authorize]
 public class MailController : Controller
 {
-    private readonly IConfiguration _config;
-    private readonly ITokenAcquisition _tokenAcquisition;
+    private readonly IEmailService _emailService;
     private readonly ILogger<MailController> _logger;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="MailController"/> class.
     /// </summary>
-    /// <param name="config">The application configuration.</param>
-    /// <param name="tokenAcquisition">The token acquisition service for authentication.</param>
+    /// <param name="emailService">The email service for handling email operations.</param>
     /// <param name="logger">The logger instance.</param>
-    public MailController(IConfiguration config, ITokenAcquisition tokenAcquisition, ILogger<MailController> logger)
+    public MailController(IEmailService emailService, ILogger<MailController> logger)
     {
-        _config = config;
-        _tokenAcquisition = tokenAcquisition;
+        _emailService = emailService;
         _logger = logger;
     }
 
@@ -49,29 +47,9 @@ public class MailController : Controller
         ViewBag.DisplayName = displayName;
         ViewBag.Email = email;
 
-        var ewsUrl = _config["Ews:Url"] ?? "https://outlook.office365.com/EWS/Exchange.asmx";
-        var service = new ExchangeService(ExchangeVersion.Exchange2013_SP1)
-        {
-            Url = new Uri(ewsUrl)
-        };
-
         try
         {
-            // Acquire token for EWS
-            var accessToken = await _tokenAcquisition.GetAccessTokenForUserAsync(new[] { "https://outlook.office365.com/.default" });
-            service.Credentials = new OAuthCredentials(accessToken);
-
-            // Find first 10 mail items in Inbox
-            var findResults = await Task.Run(() => service.FindItems(WellKnownFolderName.Inbox, new ItemView(10)));
-            var mailItems = findResults.Items.OfType<EmailMessage>().ToList();
-
-            // Add debug logging for message IDs
-            foreach (var mail in mailItems)
-            {
-                _logger.LogInformation("Email ID: {EmailId}, UniqueId: {UniqueId}, ChangeKey: {ChangeKey}, Subject: {Subject}",
-                    mail.Id, mail.Id.UniqueId, mail.Id.ChangeKey, mail.Subject);
-            }
-
+            var mailItems = await _emailService.GetInboxEmailsAsync(email, 10);
             return View(mailItems);
         }
         catch (MicrosoftIdentityWebChallengeUserException)
@@ -108,56 +86,22 @@ public class MailController : Controller
             return BadRequest("Email ID is required");
         }
 
-        var ewsUrl = _config["Ews:Url"] ?? "https://outlook.office365.com/EWS/Exchange.asmx";
-        var service = new ExchangeService(ExchangeVersion.Exchange2013_SP1)
+        var user = User as ClaimsPrincipal;
+        var email = user?.FindFirst(ClaimTypes.Upn)?.Value ?? user?.FindFirst("preferred_username")?.Value;
+        if (string.IsNullOrEmpty(email))
         {
-            Url = new Uri(ewsUrl)
-        };
+            return Unauthorized();
+        }
 
         try
         {
-            // Acquire token for EWS
-            var accessToken = await _tokenAcquisition.GetAccessTokenForUserAsync(new[] { "https://outlook.office365.com/.default" });
-            service.Credentials = new OAuthCredentials(accessToken);
-
-            // URL decode the ID before using it in the filter
-            string decodedId = Uri.UnescapeDataString(id);
-            _logger.LogInformation("Searching for email with decoded UniqueId: {UniqueId}", decodedId);
-
-            // Create a search filter
-            var filter = new SearchFilter.IsEqualTo(ItemSchema.Id, decodedId);
-            var view = new ItemView(1);
-
-            // Find the email
-            var findResults = await Task.Run(() => service.FindItems(WellKnownFolderName.Inbox, filter, view));
-
-            if (findResults.Items.Count == 0)
+            var replyModel = await _emailService.CreateReplyModelAsync(id, email);
+            if (replyModel == null)
             {
-                _logger.LogWarning("Email with UniqueId {UniqueId} not found", decodedId);
+                _logger.LogWarning("Email with ID {EmailId} not found", id);
                 TempData["ErrorMessage"] = "Email not found. It may have been moved or deleted.";
                 return RedirectToAction(nameof(Index));
             }
-
-            // Bind to the email with full details
-            var emailId = findResults.Items[0].Id;
-            _logger.LogInformation("Found email with ID: {EmailId}, binding with full properties", emailId);
-
-            var propertySet = new PropertySet(BasePropertySet.FirstClassProperties)
-            {
-                RequestedBodyType = BodyType.Text
-            };
-
-            var email = await Task.Run(() => EmailMessage.Bind(service, emailId, propertySet));
-            _logger.LogInformation("Successfully bound to email: {Subject}", email.Subject);
-
-            // Create the reply model
-            var replyModel = new EmailReplyModel
-            {
-                Id = email.Id.UniqueId, // Store the UniqueId
-                Subject = $"RE: {email.Subject}",
-                To = email.From.Address,
-                Body = $"Hello from EWS!\n\n----------\nFrom: {email.From.Name} ({email.From.Address})\nSent: {email.DateTimeSent:g}\nSubject: {email.Subject}\n\n{email.Body}"
-            };
 
             _logger.LogInformation("Reply model created, returning view");
             return View(replyModel);
@@ -205,57 +149,26 @@ public class MailController : Controller
             return View("Reply", model);
         }
 
-        var ewsUrl = _config["Ews:Url"] ?? "https://outlook.office365.com/EWS/Exchange.asmx";
-        var service = new ExchangeService(ExchangeVersion.Exchange2013_SP1)
+        var user = User as ClaimsPrincipal;
+        var email = user?.FindFirst(ClaimTypes.Upn)?.Value ?? user?.FindFirst("preferred_username")?.Value;
+        if (string.IsNullOrEmpty(email))
         {
-            Url = new Uri(ewsUrl)
-        };
+            return Unauthorized();
+        }
 
         try
         {
-            // Acquire token for EWS
-            var accessToken = await _tokenAcquisition.GetAccessTokenForUserAsync(new[] { "https://outlook.office365.com/.default" });
-            service.Credentials = new OAuthCredentials(accessToken);
-
-            // URL decode the ID before using it in the filter
-            string decodedId = Uri.UnescapeDataString(model.Id);
-            _logger.LogInformation("Searching for email with decoded UniqueId: {UniqueId}", decodedId);
-
-            // Create a search filter
-            var filter = new SearchFilter.IsEqualTo(ItemSchema.Id, decodedId);
-            var view = new ItemView(1);
-
-            // Find the email
-            var findResults = await Task.Run(() => service.FindItems(WellKnownFolderName.Inbox, filter, view));
-
-            if (findResults.Items.Count == 0)
+            var success = await _emailService.SendReplyAsync(model, email);
+            if (success)
             {
-                _logger.LogWarning("Email with UniqueId {UniqueId} not found for reply", decodedId);
+                TempData["SuccessMessage"] = "Reply sent successfully!";
+                return RedirectToAction(nameof(Index));
+            }
+            else
+            {
                 ModelState.AddModelError(string.Empty, "Email not found. It may have been moved or deleted.");
                 return View("Reply", model);
             }
-
-            // Get the email ID
-            var emailId = findResults.Items[0].Id;
-
-            // Bind to the email with full details
-            var propertySet = new PropertySet(BasePropertySet.FirstClassProperties);
-            var originalEmail = await Task.Run(() => EmailMessage.Bind(service, emailId, propertySet));
-
-            // Create a reply message
-            _logger.LogInformation("Creating reply to email: {Subject}", originalEmail.Subject);
-            var reply = await Task.Run(() => originalEmail.CreateReply(false));
-
-            // Set the body of the reply
-            reply.Body = model.Body;
-
-            // Send the reply
-            _logger.LogInformation("Sending reply...");
-            await Task.Run(() => reply.SendAndSaveCopy());
-            _logger.LogInformation("Reply sent successfully");
-
-            TempData["SuccessMessage"] = "Reply sent successfully!";
-            return RedirectToAction(nameof(Index));
         }
         catch (MicrosoftIdentityWebChallengeUserException ex)
         {

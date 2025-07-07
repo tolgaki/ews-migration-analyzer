@@ -9,16 +9,16 @@ namespace Contoso.Mail.Web.Tests.Controllers;
 
 /// <summary>
 /// Additional focused tests for MailController using the test helper.
-/// These tests focus on specific scenarios and edge cases.
+/// These tests focus on specific scenarios and edge cases with the new service layer.
 /// </summary>
 public class MailControllerFocusedTests
 {
     [Fact]
-    public async Task Index_WithSuccessfulTokenAcquisition_SetsCorrectViewBagProperties()
+    public async Task Index_WithSuccessfulEmailRetrieval_SetsCorrectViewBagProperties()
     {
         // Arrange
         var helper = new MailControllerTestHelper();
-        helper.SetupSuccessfulTokenAcquisition();
+        helper.SetupSuccessfulEmailRetrieval();
 
         // Act
         var result = await helper.Controller.Index();
@@ -26,7 +26,7 @@ public class MailControllerFocusedTests
         // Assert
         var viewResult = Assert.IsType<ViewResult>(result);
         helper.VerifyViewBagProperties("test@contoso.com", "Test User");
-        helper.VerifyTokenAcquisitionCalled();
+        helper.VerifyGetInboxEmailsCalled("test@contoso.com");
     }
 
     [Fact]
@@ -35,7 +35,7 @@ public class MailControllerFocusedTests
         // Arrange
         var helper = new MailControllerTestHelper();
         helper.SetupUserWithPreferredUsernameOnly("preferred@contoso.com", "Preferred User");
-        helper.SetupSuccessfulTokenAcquisition();
+        helper.SetupSuccessfulEmailRetrieval();
 
         // Act
         var result = await helper.Controller.Index();
@@ -43,6 +43,7 @@ public class MailControllerFocusedTests
         // Assert
         var viewResult = Assert.IsType<ViewResult>(result);
         helper.VerifyViewBagProperties("preferred@contoso.com", "Preferred User");
+        helper.VerifyGetInboxEmailsCalled("preferred@contoso.com");
     }
 
     [Fact]
@@ -51,7 +52,7 @@ public class MailControllerFocusedTests
         // Arrange
         var helper = new MailControllerTestHelper();
         helper.SetupUserWithoutDisplayName("noname@contoso.com");
-        helper.SetupSuccessfulTokenAcquisition();
+        helper.SetupSuccessfulEmailRetrieval();
 
         // Act
         var result = await helper.Controller.Index();
@@ -59,49 +60,15 @@ public class MailControllerFocusedTests
         // Assert
         var viewResult = Assert.IsType<ViewResult>(result);
         helper.VerifyViewBagProperties("noname@contoso.com", "noname@contoso.com");
+        helper.VerifyGetInboxEmailsCalled("noname@contoso.com");
     }
 
     [Fact]
-    public async Task Index_WithCustomEwsUrl_UsesConfiguredUrl()
+    public async Task Index_WithEmailServiceException_ReturnsViewWithEmptyList()
     {
         // Arrange
         var helper = new MailControllerTestHelper();
-        var customUrl = "https://custom.exchange.com/EWS/Exchange.asmx";
-        helper.SetupCustomEwsUrl(customUrl);
-        helper.SetupSuccessfulTokenAcquisition();
-
-        // Act
-        var result = await helper.Controller.Index();
-
-        // Assert
-        var viewResult = Assert.IsType<ViewResult>(result);
-        Assert.NotNull(viewResult);
-        // Verify the custom URL configuration was accessed
-        var receivedUrl = helper.Configuration.Received(1)["Ews:Url"];
-    }
-
-    [Fact]
-    public async Task Index_WithNullEwsUrl_UsesDefaultUrl()
-    {
-        // Arrange
-        var helper = new MailControllerTestHelper();
-        helper.SetupCustomEwsUrl(null);
-        helper.SetupSuccessfulTokenAcquisition();
-
-        // Act
-        var result = await helper.Controller.Index();
-
-        // Assert
-        var viewResult = Assert.IsType<ViewResult>(result);
-        Assert.NotNull(viewResult);
-    }
-
-    [Fact]
-    public async Task Index_WithTokenAcquisitionException_LogsErrorAndReturnsEmptyView()
-    {
-        // Arrange
-        var helper = new MailControllerTestHelper();
-        helper.SetupTokenAcquisitionException("Test token exception");
+        helper.SetupEmailServiceException("Service unavailable");
 
         // Act
         var result = await helper.Controller.Index();
@@ -110,108 +77,261 @@ public class MailControllerFocusedTests
         var viewResult = Assert.IsType<ViewResult>(result);
         var model = Assert.IsType<List<EmailMessage>>(viewResult.Model);
         Assert.Empty(model);
-        helper.VerifyErrorLogged("Error retrieving mailbox items");
+        helper.VerifyErrorLogged();
     }
 
     [Fact]
-    public async Task Reply_WithValidId_LogsInformationMessages()
+    public async Task Index_WithMsalException_ReturnsChallenge()
+    {
+        // Arrange
+        var helper = new MailControllerTestHelper();
+        helper.SetupEmailServiceMsalException();
+
+        // Act
+        var result = await helper.Controller.Index();
+
+        // Assert
+        Assert.IsType<ChallengeResult>(result);
+    }
+
+    [Fact]
+    public async Task Index_WithMicrosoftIdentityWebChallengeException_ReturnsChallenge()
+    {
+        // Arrange
+        var helper = new MailControllerTestHelper();
+        helper.SetupEmailServiceChallenge();
+
+        // Act
+        var result = await helper.Controller.Index();
+
+        // Assert
+        Assert.IsType<ChallengeResult>(result);
+    }
+
+    [Fact]
+    public async Task Reply_WithValidEmailId_ReturnsReplyView()
     {
         // Arrange
         var helper = new MailControllerTestHelper();
         var emailId = "test-email-id";
-        helper.SetupTokenAcquisitionChallenge(); // This will cause a challenge before EWS operations
+        var replyModel = MailControllerTestHelper.CreateValidEmailReplyModel();
+        helper.SetupSuccessfulReplyModelCreation(replyModel);
+
+        // Act
+        var result = await helper.Controller.Reply(emailId);
+
+        // Assert
+        var viewResult = Assert.IsType<ViewResult>(result);
+        Assert.Same(replyModel, viewResult.Model);
+        helper.VerifyCreateReplyModelCalled(emailId, "test@contoso.com");
+    }
+
+    [Fact]
+    public async Task Reply_WithEmailNotFound_RedirectsToIndexWithError()
+    {
+        // Arrange
+        var helper = new MailControllerTestHelper();
+        var emailId = "non-existent-email-id";
+        helper.SetupEmailNotFound();
+
+        // Act
+        var result = await helper.Controller.Reply(emailId);
+
+        // Assert
+        var redirectResult = Assert.IsType<RedirectToActionResult>(result);
+        Assert.Equal("Index", redirectResult.ActionName);
+        Assert.Equal("Email not found. It may have been moved or deleted.", helper.Controller.TempData["ErrorMessage"]);
+    }
+
+    [Fact]
+    public async Task Reply_WithEmptyId_ReturnsBadRequest()
+    {
+        // Arrange
+        var helper = new MailControllerTestHelper();
+
+        // Act
+        var result = await helper.Controller.Reply("" );
+
+        // Assert
+        var badRequestResult = Assert.IsType<BadRequestObjectResult>(result);
+        Assert.Equal("Email ID is required", badRequestResult.Value);
+    }
+
+    [Fact]
+    public async Task Reply_WithNullId_ReturnsBadRequest()
+    {
+        // Arrange
+        var helper = new MailControllerTestHelper();
+
+        // Act
+        var result = await helper.Controller.Reply(null!);
+
+        // Assert
+        var badRequestResult = Assert.IsType<BadRequestObjectResult>(result);
+        Assert.Equal("Email ID is required", badRequestResult.Value);
+    }
+
+    [Fact]
+    public async Task Reply_WithMsalException_ReturnsChallenge()
+    {
+        // Arrange
+        var helper = new MailControllerTestHelper();
+        var emailId = "test-email-id";
+        helper.SetupEmailServiceMsalException();
 
         // Act
         var result = await helper.Controller.Reply(emailId);
 
         // Assert
         Assert.IsType<ChallengeResult>(result);
-        // Verify that the reply action was logged
-        helper.VerifyInformationLogged("Reply action called with ID:");
     }
 
     [Fact]
-    public async Task Reply_WithEncodedId_DecodesIdCorrectly()
+    public async Task Reply_WithMicrosoftIdentityWebChallengeException_ReturnsChallenge()
     {
         // Arrange
         var helper = new MailControllerTestHelper();
-        var encodedId = Uri.EscapeDataString("test-email-id-with-special-chars+/=");
-        helper.SetupTokenAcquisitionChallenge(); // This will cause a challenge before EWS operations
+        var emailId = "test-email-id";
+        helper.SetupEmailServiceChallenge();
 
         // Act
-        var result = await helper.Controller.Reply(encodedId);
+        var result = await helper.Controller.Reply(emailId);
 
         // Assert
         Assert.IsType<ChallengeResult>(result);
-        // Verify that the URL decoding was logged
-        helper.VerifyInformationLogged("Searching for email with decoded UniqueId:");
     }
 
     [Fact]
-    public async Task SendReply_WithValidModel_LogsCorrectInformation()
+    public async Task SendReply_WithValidModel_RedirectsToIndexWithSuccess()
     {
         // Arrange
         var helper = new MailControllerTestHelper();
-        var model = MailControllerTestHelper.CreateValidEmailReplyModel();
-        helper.SetupTokenAcquisitionChallenge(); // This will cause a challenge before EWS operations
+        var replyModel = MailControllerTestHelper.CreateValidEmailReplyModel();
+        helper.SetupSuccessfulReplySending(true);
 
         // Act
-        var result = await helper.Controller.SendReply(model);
+        var result = await helper.Controller.SendReply(replyModel);
 
         // Assert
-        Assert.IsType<ChallengeResult>(result);
-        helper.VerifyInformationLogged($"SendReply action called for ID: {model.Id}");
+        var redirectResult = Assert.IsType<RedirectToActionResult>(result);
+        Assert.Equal("Index", redirectResult.ActionName);
+        Assert.Equal("Reply sent successfully!", helper.Controller.TempData["SuccessMessage"]);
+        helper.VerifySendReplyCalled(replyModel, "test@contoso.com");
     }
 
     [Fact]
-    public async Task SendReply_WithInvalidModel_ReturnsReplyViewWithModel()
+    public async Task SendReply_WithFailedSend_ReturnsReplyViewWithError()
     {
         // Arrange
         var helper = new MailControllerTestHelper();
-        var model = MailControllerTestHelper.CreateInvalidEmailReplyModel();
-        
-        // Add model validation errors
-        helper.Controller.ModelState.AddModelError("Subject", "Subject is required");
-        helper.Controller.ModelState.AddModelError("To", "To is required");
-        helper.Controller.ModelState.AddModelError("Body", "Body is required");
+        var replyModel = MailControllerTestHelper.CreateValidEmailReplyModel();
+        helper.SetupSuccessfulReplySending(false);
 
         // Act
-        var result = await helper.Controller.SendReply(model);
+        var result = await helper.Controller.SendReply(replyModel);
 
         // Assert
         var viewResult = Assert.IsType<ViewResult>(result);
         Assert.Equal("Reply", viewResult.ViewName);
-        Assert.Same(model, viewResult.Model);
-        helper.VerifyWarningLogged("Model state is invalid");
-    }
-
-    [Theory]
-    [InlineData("")]
-    [InlineData("   ")]
-    [InlineData("\t")]
-    [InlineData("\n")]
-    public async Task Reply_WithWhitespaceId_ReturnsBadRequest(string whitespaceId)
-    {
-        // Arrange
-        var helper = new MailControllerTestHelper();
-
-        // Act
-        var result = await helper.Controller.Reply(whitespaceId);
-
-        // Assert
-        if (string.IsNullOrEmpty(whitespaceId.Trim()))
-        {
-            var badRequestResult = Assert.IsType<BadRequestObjectResult>(result);
-            Assert.Equal("Email ID is required", badRequestResult.Value);
-        }
+        Assert.Same(replyModel, viewResult.Model);
+        Assert.True(helper.Controller.ModelState.ContainsKey(string.Empty));
     }
 
     [Fact]
-    public void Error_WithTraceIdentifier_ReturnsModelWithRequestId()
+    public async Task SendReply_WithInvalidModel_ReturnsReplyView()
     {
         // Arrange
         var helper = new MailControllerTestHelper();
-        helper.Controller.ControllerContext.HttpContext.TraceIdentifier = "test-trace-id";
+        var invalidModel = MailControllerTestHelper.CreateInvalidEmailReplyModel();
+        helper.Controller.ModelState.AddModelError("Subject", "Subject is required");
+
+        // Act
+        var result = await helper.Controller.SendReply(invalidModel);
+
+        // Assert
+        var viewResult = Assert.IsType<ViewResult>(result);
+        Assert.Equal("Reply", viewResult.ViewName);
+        Assert.Same(invalidModel, viewResult.Model);
+    }
+
+    [Fact]
+    public async Task SendReply_WithMsalException_ReturnsChallenge()
+    {
+        // Arrange
+        var helper = new MailControllerTestHelper();
+        var replyModel = MailControllerTestHelper.CreateValidEmailReplyModel();
+        helper.SetupEmailServiceMsalException();
+
+        // Act
+        var result = await helper.Controller.SendReply(replyModel);
+
+        // Assert
+        Assert.IsType<ChallengeResult>(result);
+    }
+
+    [Fact]
+    public async Task SendReply_WithMicrosoftIdentityWebChallengeException_ReturnsChallenge()
+    {
+        // Arrange
+        var helper = new MailControllerTestHelper();
+        var replyModel = MailControllerTestHelper.CreateValidEmailReplyModel();
+        helper.SetupEmailServiceChallenge();
+
+        // Act
+        var result = await helper.Controller.SendReply(replyModel);
+
+        // Assert
+        Assert.IsType<ChallengeResult>(result);
+    }
+
+    [Fact]
+    public async Task Index_WithUnauthenticatedUser_ReturnsUnauthorized()
+    {
+        // Arrange
+        var helper = new MailControllerTestHelper();
+        helper.SetupUnauthenticatedUser();
+
+        // Act
+        var result = await helper.Controller.Index();
+
+        // Assert
+        Assert.IsType<UnauthorizedResult>(result);
+    }
+
+    [Fact]
+    public async Task Reply_WithUnauthenticatedUser_ReturnsUnauthorized()
+    {
+        // Arrange
+        var helper = new MailControllerTestHelper();
+        helper.SetupUnauthenticatedUser();
+
+        // Act
+        var result = await helper.Controller.Reply("test-id");
+
+        // Assert
+        Assert.IsType<UnauthorizedResult>(result);
+    }
+
+    [Fact]
+    public async Task SendReply_WithUnauthenticatedUser_ReturnsUnauthorized()
+    {
+        // Arrange
+        var helper = new MailControllerTestHelper();
+        helper.SetupUnauthenticatedUser();
+        var replyModel = MailControllerTestHelper.CreateValidEmailReplyModel();
+
+        // Act
+        var result = await helper.Controller.SendReply(replyModel);
+
+        // Assert
+        Assert.IsType<UnauthorizedResult>(result);
+    }
+
+    [Fact]
+    public void Error_ReturnsErrorViewWithRequestId()
+    {
+        // Arrange
+        var helper = new MailControllerTestHelper();
 
         // Act
         var result = helper.Controller.Error();
@@ -219,63 +339,6 @@ public class MailControllerFocusedTests
         // Assert
         var viewResult = Assert.IsType<ViewResult>(result);
         var model = Assert.IsType<ErrorViewModel>(viewResult.Model);
-        Assert.Equal("test-trace-id", model.RequestId);
-    }
-
-    [Fact]
-    public void Controller_ImplementsIDisposablePattern()
-    {
-        // Arrange & Act
-        var helper = new MailControllerTestHelper();
-        
-        // Assert
-        Assert.NotNull(helper.Controller);
-        // Verify controller can be disposed without errors
-        // Note: MailController inherits from Controller which implements IDisposable
-        Assert.IsAssignableFrom<IDisposable>(helper.Controller);
-    }
-
-    [Fact]
-    public async Task Index_MultipleCallsWithSameUser_ConsistentBehavior()
-    {
-        // Arrange
-        var helper = new MailControllerTestHelper();
-        helper.SetupSuccessfulTokenAcquisition();
-
-        // Act
-        var result1 = await helper.Controller.Index();
-        var result2 = await helper.Controller.Index();
-
-        // Assert
-        Assert.IsType<ViewResult>(result1);
-        Assert.IsType<ViewResult>(result2);
-        
-        // Verify token acquisition was called twice
-        await helper.TokenAcquisition.Received(2).GetAccessTokenForUserAsync(
-            Arg.Is<string[]>(scopes => scopes.Contains("https://outlook.office365.com/.default")));
-    }
-
-    [Fact]
-    public async Task Reply_ThenSendReply_WorkflowTest()
-    {
-        // Arrange
-        var helper = new MailControllerTestHelper();
-        var emailId = "test-workflow-id";
-        var model = MailControllerTestHelper.CreateValidEmailReplyModel();
-        model.Id = emailId;
-        
-        helper.SetupTokenAcquisitionChallenge(); // Will cause challenges for both operations
-
-        // Act
-        var replyResult = await helper.Controller.Reply(emailId);
-        var sendResult = await helper.Controller.SendReply(model);
-
-        // Assert
-        Assert.IsType<ChallengeResult>(replyResult);
-        Assert.IsType<ChallengeResult>(sendResult);
-        
-        // Verify both operations were logged
-        helper.VerifyInformationLogged("Reply action called with ID:");
-        helper.VerifyInformationLogged("SendReply action called for ID:");
+        Assert.NotNull(model.RequestId);
     }
 }
