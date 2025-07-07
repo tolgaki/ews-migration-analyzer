@@ -17,12 +17,12 @@ We hope that learning about using AI tools like GitHub Copilot on what would oth
 ## Table of Contents
 
 - [Getting Started](#getting-started)
-  - [Prerequisites](#prerequisites)
+- [Prerequisites](#prerequisites)
 - [Setting the Baseline](./00-Baseline/README.md)
 - [Build Understanding with GitHub Copilot](./01-Build_Understanging/README.md)
 - [Adding Instrumentation with .NET Aspire](./02-Add_Instrumentation/README.md)
-- [Adding E2E Tests with Playwright](./03-Add_Tests/README.md)
-- [Refactor for Modularity with Copilot](README.md#coming-soon)
+- [Adding Unit Tests with xUnit and NSubstitute](./03-Add_Tests/README.md)
+- [Refactor for Modularity with Copilot](./04-Refactor/README.md)
 - [Reimplement EWS Components with Graph API and GitHub Copilot](README.md#coming-soon)
 
 ## Getting Started
