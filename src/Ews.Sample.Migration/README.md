@@ -44,7 +44,4 @@ We hope that learning about using AI tools like GitHub Copilot on what would oth
    - Application (client) ID
    - Directory (tenant) ID
 
-### Coming Soon
-
-- Refactor for Modularity with Copilot
-- Reimplement EWS Components with Graph API and GitHub Copilot
+We'll revisit this app registration later to add the Microsoft Graph API permissions needed for migration.

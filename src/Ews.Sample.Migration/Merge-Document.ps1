@@ -1,0 +1,2 @@
+pandoc -s ./README.md ./00-Baseline/README.md ./01-Build_Understanding/README.md ./02-Add_Instrumentation/README.md ./03-Add_Tests/README.md ./04-Refactor/README.md -o ./BlogSeries.md --toc --toc-depth=3 --wrap=preserve
+pandoc -s ./README.md ./00-Baseline/README.md ./01-Build_Understanding/README.md ./02-Add_Instrumentation/README.md ./03-Add_Tests/README.md ./04-Refactor/README.md -o ./BlogSeries.docx --toc --toc-depth=3 --wrap=preserve
