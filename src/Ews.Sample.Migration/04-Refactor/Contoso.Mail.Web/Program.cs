@@ -24,17 +24,12 @@ public partial class Program // Make Program public and in global namespace for 
 
         // Configure email service implementation based on configuration
         var useGraphApi = builder.Configuration.GetValue<bool>("EmailService:UseGraphApi", false);
-        
+
         if (useGraphApi)
         {
             // Add Graph SDK with basic configuration
-            builder.Services.AddScoped<GraphServiceClient>(provider =>
-            {
-                // Create a basic GraphServiceClient - authentication will be handled separately
-                var httpClient = new HttpClient();
-                return new GraphServiceClient(httpClient);
-            });
-            
+            builder.Services.AddMicrosoftGraph(builder.Configuration.GetSection("GraphApi"));
+
             // Register Graph API implementation
             builder.Services.AddScoped<IEmailService, GraphEmailService>();
         }
