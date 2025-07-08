@@ -46,7 +46,7 @@ This should result in a new test project using xUnit and NSubstitute as prescrib
 
 In the build I used, GitHub Copilot got stuck while adding the web project reference to the test project. I stopped the prompt, added the reference manually and then asked Copilot to continue. Sometimes it's easier to execute a function in the IDE than trying to iterate prompts to get Copilot to fix mistakes.
 
-After the tests were created, running the build, showed a few errors that were easily fixed. A common one, which is likely to occur during refactoring as well is the ambiguous reference between `Microsoft.Exchange.WebServices.Data.Task` and `System.Threading.Tasks.Task`. GitHub Copilot suggested the correct fix options of aliasing Task to System.Threading.Tasks.Task or fully qualifying the type. Because there are many references to System.Threading.Tasks.Task in the code, I chose the alias option and Copilot added the following line to the top of the test class:
+After the tests were created, running the build, showed a few errors that were easily fixed. A common one, which is likely to occur during refactoring as well is the ambiguous reference between `Microsoft.Exchange.WebServices.Data.Task` and `System.Threading.Tasks.Task`. GitHub Copilot suggested the correct fix options of aliasing `Task` to `System.Threading.Tasks.Task` or fully qualifying the type. Because there are many references to `System.Threading.Tasks.Task` in the code, I chose the alias option and Copilot added the following line to the top of the test class:
 
 ```csharp
 using Task = System.Threading.Tasks.Task;
