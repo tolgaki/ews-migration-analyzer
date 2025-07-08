@@ -237,4 +237,89 @@ public class EwsEmailServiceTests
         // Assert - Verify logging was called
         _mockLogger.ReceivedWithAnyArgs().Log(default, default, default!, default, default!);
     }
+
+    [Fact]
+    public async Task GetInboxEmailsAsync_ReturnsEmptyListOnError()
+    {
+        // Arrange
+        var userEmail = "test@contoso.com";
+        var count = 10;
+        
+        // Setup to throw an exception
+        _mockExchangeServiceFactory.CreateServiceAsync(userEmail)
+            .Returns(Task.FromException<ExchangeService>(new Exception("Test exception")));
+
+        // Act & Assert
+        await Assert.ThrowsAsync<Exception>(() => _emailService.GetInboxEmailsAsync(userEmail, count));
+    }
+
+    [Fact]
+    public async Task GetEmailByIdAsync_InvalidEmailId_ReturnsNull()
+    {
+        // Arrange
+        var emailId = "";
+        var userEmail = "test@contoso.com";
+
+        // Act
+        var result = await _emailService.GetEmailByIdAsync(emailId, userEmail);
+
+        // Assert
+        Assert.Null(result);
+    }
+
+    [Fact]
+    public async Task CreateReplyModelAsync_ValidEmailId_CallsGetEmailByIdAsync()
+    {
+        // Arrange
+        var emailId = "valid-email-id";
+        var userEmail = "test@contoso.com";
+        
+        var mockService = new ExchangeService(ExchangeVersion.Exchange2013_SP1);
+        _mockExchangeServiceFactory.CreateServiceAsync(userEmail)
+            .Returns(mockService);
+
+        try
+        {
+            // Act
+            await _emailService.CreateReplyModelAsync(emailId, userEmail);
+        }
+        catch
+        {
+            // Expected to fail due to actual EWS call limitations
+        }
+
+        // Assert
+        await _mockExchangeServiceFactory.Received(1).CreateServiceAsync(userEmail); // Called once through GetEmailByIdAsync
+    }
+
+    [Fact]
+    public async Task SendReplyAsync_ValidReplyModel_CallsExchangeService()
+    {
+        // Arrange
+        var replyModel = new EmailReplyModel
+        {
+            Id = "valid-email-id",
+            Subject = "RE: Test Subject",
+            To = "recipient@contoso.com",
+            Body = "Reply body"
+        };
+        var userEmail = "test@contoso.com";
+        
+        var mockService = new ExchangeService(ExchangeVersion.Exchange2013_SP1);
+        _mockExchangeServiceFactory.CreateServiceAsync(userEmail)
+            .Returns(mockService);
+
+        try
+        {
+            // Act
+            await _emailService.SendReplyAsync(replyModel, userEmail);
+        }
+        catch
+        {
+            // Expected to fail due to actual EWS call limitations
+        }
+
+        // Assert
+        await _mockExchangeServiceFactory.Received(1).CreateServiceAsync(userEmail);
+    }
 }

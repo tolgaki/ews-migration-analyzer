@@ -8,6 +8,7 @@ using Microsoft.AspNetCore.Mvc.ViewFeatures;
 using Microsoft.Extensions.Logging;
 using NSubstitute;
 using NSubstitute.ExceptionExtensions;
+using DomainEmailMessage = Contoso.Mail.Models.EmailMessage;
 
 namespace Contoso.Mail.Web.Tests.Helpers;
 
@@ -127,9 +128,9 @@ public class MailControllerTestHelper
     /// Configures the mock email service to return successful email list.
     /// </summary>
     /// <param name="emails">The list of emails to return (defaults to empty list)</param>
-    public void SetupSuccessfulEmailRetrieval(IList<Microsoft.Exchange.WebServices.Data.EmailMessage>? emails = null)
+    public void SetupSuccessfulEmailRetrieval(IList<DomainEmailMessage>? emails = null)
     {
-        emails ??= new List<Microsoft.Exchange.WebServices.Data.EmailMessage>();
+        emails ??= new List<DomainEmailMessage>();
         EmailService.GetInboxEmailsAsync(Arg.Any<string>(), Arg.Any<int>())
             .Returns(emails);
     }
@@ -236,6 +237,25 @@ public class MailControllerTestHelper
             Subject = "",
             To = "",
             Body = ""
+        };
+    }
+
+    /// <summary>
+    /// Creates a sample domain EmailMessage for testing.
+    /// </summary>
+    public static DomainEmailMessage CreateSampleEmailMessage(string id = "test-id", string subject = "Test Subject")
+    {
+        return new DomainEmailMessage
+        {
+            Id = id,
+            Subject = subject,
+            From = "sender@contoso.com",
+            FromName = "Test Sender",
+            DateTimeReceived = DateTime.Now.AddHours(-1),
+            Body = "Test email body",
+            IsRead = false,
+            HasAttachments = false,
+            Importance = "Normal"
         };
     }
 

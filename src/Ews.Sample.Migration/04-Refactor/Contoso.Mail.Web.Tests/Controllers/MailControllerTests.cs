@@ -5,13 +5,13 @@ using Contoso.Mail.Web.Services;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.ViewFeatures;
-using Microsoft.Exchange.WebServices.Data;
 using Microsoft.Extensions.Logging;
 using Microsoft.Identity.Client;
 using Microsoft.Identity.Web;
 using NSubstitute;
 using NSubstitute.ExceptionExtensions;
 using Task = System.Threading.Tasks.Task;
+using DomainEmailMessage = Contoso.Mail.Models.EmailMessage;
 
 namespace Contoso.Mail.Web.Tests.Controllers;
 
@@ -59,7 +59,7 @@ public class MailControllerTests
     public async Task Index_WithValidUser_ReturnsViewWithEmails()
     {
         // Arrange
-        var mockEmails = new List<EmailMessage>(); // Empty list is fine for this test
+        var mockEmails = new List<DomainEmailMessage>(); // Empty list is fine for this test
         _emailService.GetInboxEmailsAsync("test@contoso.com", 10)
             .Returns(mockEmails);
 
@@ -135,7 +135,7 @@ public class MailControllerTests
 
         // Assert
         var viewResult = Assert.IsType<ViewResult>(result);
-        var model = Assert.IsType<List<EmailMessage>>(viewResult.Model);
+        var model = Assert.IsType<List<DomainEmailMessage>>(viewResult.Model);
         Assert.Empty(model);
         
         // Verify that the logger was called
@@ -400,7 +400,7 @@ public class MailControllerTests
         var user = new ClaimsPrincipal(identity);
         _controller.ControllerContext.HttpContext.User = user;
 
-        var mockEmails = new List<EmailMessage>();
+        var mockEmails = new List<DomainEmailMessage>();
         _emailService.GetInboxEmailsAsync("preferred@contoso.com", 10)
             .Returns(mockEmails);
 
@@ -426,7 +426,7 @@ public class MailControllerTests
         var user = new ClaimsPrincipal(identity);
         _controller.ControllerContext.HttpContext.User = user;
 
-        var mockEmails = new List<EmailMessage>();
+        var mockEmails = new List<DomainEmailMessage>();
         _emailService.GetInboxEmailsAsync("test@contoso.com", 10)
             .Returns(mockEmails);
 

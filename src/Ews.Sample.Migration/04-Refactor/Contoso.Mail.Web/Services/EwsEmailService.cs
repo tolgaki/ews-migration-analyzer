@@ -1,6 +1,8 @@
 using Contoso.Mail.Models;
 using Microsoft.Exchange.WebServices.Data;
 using Task = System.Threading.Tasks.Task;
+using EwsEmailMessage = Microsoft.Exchange.WebServices.Data.EmailMessage;
+using DomainEmailMessage = Contoso.Mail.Models.EmailMessage;
 
 namespace Contoso.Mail.Web.Services;
 
@@ -30,7 +32,7 @@ public class EwsEmailService : IEmailService
     /// <param name="userEmail">The email address of the user.</param>
     /// <param name="count">The maximum number of emails to retrieve.</param>
     /// <returns>A list of email messages.</returns>
-    public async Task<IList<EmailMessage>> GetInboxEmailsAsync(string userEmail, int count = 10)
+    public async Task<IList<DomainEmailMessage>> GetInboxEmailsAsync(string userEmail, int count = 10)
     {
         _logger.LogInformation("Retrieving {Count} emails from inbox for user: {UserEmail}", count, userEmail);
 
@@ -38,18 +40,23 @@ public class EwsEmailService : IEmailService
 
         // Find mail items in Inbox
         var findResults = await Task.Run(() => service.FindItems(WellKnownFolderName.Inbox, new ItemView(count)));
-        var mailItems = findResults.Items.OfType<EmailMessage>().ToList();
+        var ewsMailItems = findResults.Items.OfType<EwsEmailMessage>().ToList();
 
-        // Add debug logging for message IDs
-        foreach (var mail in mailItems)
+        // Convert EWS messages to domain model
+        var domainEmailMessages = new List<DomainEmailMessage>();
+        foreach (var ewsEmail in ewsMailItems)
         {
+            // Add debug logging for message IDs
             _logger.LogDebug("Email ID: {EmailId}, UniqueId: {UniqueId}, ChangeKey: {ChangeKey}, Subject: {Subject}",
-                mail.Id, mail.Id.UniqueId, mail.Id.ChangeKey, mail.Subject);
+                ewsEmail.Id, ewsEmail.Id.UniqueId, ewsEmail.Id.ChangeKey, ewsEmail.Subject);
+
+            var domainEmail = ConvertToDomainEmailMessage(ewsEmail);
+            domainEmailMessages.Add(domainEmail);
         }
 
-        _logger.LogInformation("Retrieved {ActualCount} emails from inbox for user: {UserEmail}", mailItems.Count, userEmail);
+        _logger.LogInformation("Retrieved {ActualCount} emails from inbox for user: {UserEmail}", domainEmailMessages.Count, userEmail);
 
-        return mailItems;
+        return domainEmailMessages;
     }
 
     /// <summary>
@@ -57,14 +64,14 @@ public class EwsEmailService : IEmailService
     /// </summary>
     /// <param name="emailId">The unique identifier of the email.</param>
     /// <returns>The email message if found, null otherwise.</returns>
-    public Task<EmailMessage?> GetEmailByIdAsync(string emailId)
+    public Task<DomainEmailMessage?> GetEmailByIdAsync(string emailId)
     {
         _logger.LogInformation("Retrieving email with ID: {EmailId}", emailId);
 
         if (string.IsNullOrWhiteSpace(emailId))
         {
             _logger.LogWarning("Email ID is null or empty");
-            return Task.FromResult<EmailMessage?>(null);
+            return Task.FromResult<DomainEmailMessage?>(null);
         }
 
         // Note: We need a user email to create the service, but this method doesn't have it.
@@ -79,7 +86,7 @@ public class EwsEmailService : IEmailService
     /// <param name="emailId">The unique identifier of the email.</param>
     /// <param name="userEmail">The email address of the user.</param>
     /// <returns>The email message if found, null otherwise.</returns>
-    public async Task<EmailMessage?> GetEmailByIdAsync(string emailId, string userEmail)
+    public async Task<DomainEmailMessage?> GetEmailByIdAsync(string emailId, string userEmail)
     {
         _logger.LogInformation("Retrieving email with ID: {EmailId} for user: {UserEmail}", emailId, userEmail);
 
@@ -117,10 +124,10 @@ public class EwsEmailService : IEmailService
             RequestedBodyType = BodyType.Text
         };
 
-        var email = await Task.Run(() => EmailMessage.Bind(service, emailItemId, propertySet));
-        _logger.LogDebug("Successfully bound to email: {Subject}", email.Subject);
+        var ewsEmail = await Task.Run(() => EwsEmailMessage.Bind(service, emailItemId, propertySet));
+        _logger.LogDebug("Successfully bound to email: {Subject}", ewsEmail.Subject);
 
-        return email;
+        return ConvertToDomainEmailMessage(ewsEmail);
     }
 
     /// <summary>
@@ -153,10 +160,10 @@ public class EwsEmailService : IEmailService
 
         var replyModel = new EmailReplyModel
         {
-            Id = email.Id.UniqueId, // Store the UniqueId
+            Id = email.Id, // Use the domain model ID
             Subject = $"RE: {email.Subject}",
-            To = email.From.Address,
-            Body = $"Hello from EWS!\n\n----------\nFrom: {email.From.Name} ({email.From.Address})\nSent: {email.DateTimeSent:g}\nSubject: {email.Subject}\n\n{email.Body}"
+            To = email.From,
+            Body = $"Hello from EWS!\n\n----------\nFrom: {email.FromName} ({email.From})\nSent: {email.DateTimeSent:g}\nSubject: {email.Subject}\n\n{email.Body}"
         };
 
         _logger.LogDebug("Reply model created for email: {Subject}", email.Subject);
@@ -208,7 +215,7 @@ public class EwsEmailService : IEmailService
 
         // Bind to the email with full details
         var propertySet = new PropertySet(BasePropertySet.FirstClassProperties);
-        var originalEmail = await Task.Run(() => EmailMessage.Bind(service, emailId, propertySet));
+        var originalEmail = await Task.Run(() => EwsEmailMessage.Bind(service, emailId, propertySet));
 
         // Create a reply message
         _logger.LogDebug("Creating reply to email: {Subject}", originalEmail.Subject);
@@ -223,5 +230,47 @@ public class EwsEmailService : IEmailService
         _logger.LogInformation("Reply sent successfully for email: {Subject}", originalEmail.Subject);
 
         return true;
+    }
+
+    /// <summary>
+    /// Converts an EWS EmailMessage to a domain EmailMessage.
+    /// </summary>
+    /// <param name="ewsEmail">The EWS email message to convert.</param>
+    /// <returns>A domain EmailMessage object.</returns>
+    private static DomainEmailMessage ConvertToDomainEmailMessage(EwsEmailMessage ewsEmail)
+    {
+        var domainEmail = new DomainEmailMessage
+        {
+            Id = ewsEmail.Id.UniqueId,
+            Subject = ewsEmail.Subject ?? string.Empty,
+            From = ewsEmail.From?.Address ?? string.Empty,
+            FromName = ewsEmail.From?.Name ?? string.Empty,
+            DateTimeReceived = ewsEmail.DateTimeReceived,
+            DateTimeSent = ewsEmail.DateTimeSent,
+            Body = ewsEmail.Body?.Text ?? string.Empty,
+            BodyPreview = ewsEmail.Preview ?? string.Empty,
+            HasAttachments = ewsEmail.HasAttachments,
+            IsRead = ewsEmail.IsRead,
+            Importance = ewsEmail.Importance.ToString()
+        };
+
+        // Convert recipients
+        if (ewsEmail.ToRecipients != null)
+        {
+            domainEmail.ToRecipients = ewsEmail.ToRecipients
+                .Where(r => !string.IsNullOrEmpty(r.Address))
+                .Select(r => r.Address)
+                .ToList();
+        }
+
+        if (ewsEmail.CcRecipients != null)
+        {
+            domainEmail.CcRecipients = ewsEmail.CcRecipients
+                .Where(r => !string.IsNullOrEmpty(r.Address))
+                .Select(r => r.Address)
+                .ToList();
+        }
+
+        return domainEmail;
     }
 }

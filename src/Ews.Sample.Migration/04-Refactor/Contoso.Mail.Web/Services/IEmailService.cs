@@ -1,5 +1,4 @@
 using Contoso.Mail.Models;
-using Microsoft.Exchange.WebServices.Data;
 
 namespace Contoso.Mail.Web.Services;
 

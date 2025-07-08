@@ -1,5 +1,4 @@
-@using Microsoft.Exchange.WebServices.Data;
-@model IEnumerable<Microsoft.Exchange.WebServices.Data.EmailMessage>
+@model IEnumerable<Contoso.Mail.Models.EmailMessage>
 @{
     ViewData["Title"] = "Mailbox";
 }
@@ -47,10 +46,10 @@
     {
         <tr>
             <td>@mail.Subject</td>
-            <td>@mail.From?.Address</td>
+            <td>@mail.From</td>
             <td>@mail.DateTimeReceived.ToString("g")</td>
             <td>
-                <a class="btn btn-primary btn-sm" asp-action="Reply" asp-route-id="@mail.Id.UniqueId">Reply</a>
+                <a class="btn btn-primary btn-sm" asp-action="Reply" asp-route-id="@mail.Id">Reply</a>
             </td>
         </tr>
     }

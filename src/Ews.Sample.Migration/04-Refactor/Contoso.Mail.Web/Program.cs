@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.OpenIdConnect;
 using Microsoft.Identity.Web;
+using Microsoft.Graph;
 using Contoso.Mail.Web.Services;
 
 public partial class Program // Make Program public and in global namespace for integration tests
@@ -17,13 +18,32 @@ public partial class Program // Make Program public and in global namespace for 
             .AddMicrosoftIdentityWebApp(builder.Configuration.GetSection("AzureAd"))
             .EnableTokenAcquisitionToCallDownstreamApi()
             .AddInMemoryTokenCaches();
-        
+
         builder.Services.AddControllersWithViews();
         builder.Services.AddRazorPages();
 
-        // Register email services
-        builder.Services.AddScoped<IExchangeServiceFactory, ExchangeServiceFactory>();
-        builder.Services.AddScoped<IEmailService, EwsEmailService>();
+        // Configure email service implementation based on configuration
+        var useGraphApi = builder.Configuration.GetValue<bool>("EmailService:UseGraphApi", false);
+        
+        if (useGraphApi)
+        {
+            // Add Graph SDK with basic configuration
+            builder.Services.AddScoped<GraphServiceClient>(provider =>
+            {
+                // Create a basic GraphServiceClient - authentication will be handled separately
+                var httpClient = new HttpClient();
+                return new GraphServiceClient(httpClient);
+            });
+            
+            // Register Graph API implementation
+            builder.Services.AddScoped<IEmailService, GraphEmailService>();
+        }
+        else
+        {
+            // Register EWS implementation (default)
+            builder.Services.AddScoped<IExchangeServiceFactory, ExchangeServiceFactory>();
+            builder.Services.AddScoped<IEmailService, EwsEmailService>();
+        }
 
         var app = builder.Build();
 

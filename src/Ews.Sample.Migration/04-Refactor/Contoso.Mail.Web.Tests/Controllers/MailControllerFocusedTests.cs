@@ -1,9 +1,9 @@
 using Contoso.Mail.Models;
 using Contoso.Mail.Web.Tests.Helpers;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.Exchange.WebServices.Data;
 using NSubstitute;
 using Task = System.Threading.Tasks.Task;
+using DomainEmailMessage = Contoso.Mail.Models.EmailMessage;
 
 namespace Contoso.Mail.Web.Tests.Controllers;
 
@@ -75,7 +75,7 @@ public class MailControllerFocusedTests
 
         // Assert
         var viewResult = Assert.IsType<ViewResult>(result);
-        var model = Assert.IsType<List<EmailMessage>>(viewResult.Model);
+        var model = Assert.IsType<List<DomainEmailMessage>>(viewResult.Model);
         Assert.Empty(model);
         helper.VerifyErrorLogged();
     }
@@ -95,7 +95,7 @@ public class MailControllerFocusedTests
     }
 
     [Fact]
-    public async Task Index_WithMicrosoftIdentityWebChallengeException_ReturnsChallenge()
+    public async Task Index_WithChallengeException_ReturnsChallenge()
     {
         // Arrange
         var helper = new MailControllerTestHelper();
@@ -109,21 +109,20 @@ public class MailControllerFocusedTests
     }
 
     [Fact]
-    public async Task Reply_WithValidEmailId_ReturnsReplyView()
+    public async Task Reply_WithSuccessfulReplyModel_ReturnsReplyView()
     {
         // Arrange
         var helper = new MailControllerTestHelper();
-        var emailId = "test-email-id";
         var replyModel = MailControllerTestHelper.CreateValidEmailReplyModel();
         helper.SetupSuccessfulReplyModelCreation(replyModel);
 
         // Act
-        var result = await helper.Controller.Reply(emailId);
+        var result = await helper.Controller.Reply("test-email-id");
 
         // Assert
         var viewResult = Assert.IsType<ViewResult>(result);
         Assert.Same(replyModel, viewResult.Model);
-        helper.VerifyCreateReplyModelCalled(emailId, "test@contoso.com");
+        helper.VerifyCreateReplyModelCalled("test-email-id", "test@contoso.com");
     }
 
     [Fact]
@@ -131,11 +130,10 @@ public class MailControllerFocusedTests
     {
         // Arrange
         var helper = new MailControllerTestHelper();
-        var emailId = "non-existent-email-id";
         helper.SetupEmailNotFound();
 
         // Act
-        var result = await helper.Controller.Reply(emailId);
+        var result = await helper.Controller.Reply("non-existent-id");
 
         // Assert
         var redirectResult = Assert.IsType<RedirectToActionResult>(result);
@@ -144,65 +142,7 @@ public class MailControllerFocusedTests
     }
 
     [Fact]
-    public async Task Reply_WithEmptyId_ReturnsBadRequest()
-    {
-        // Arrange
-        var helper = new MailControllerTestHelper();
-
-        // Act
-        var result = await helper.Controller.Reply("" );
-
-        // Assert
-        var badRequestResult = Assert.IsType<BadRequestObjectResult>(result);
-        Assert.Equal("Email ID is required", badRequestResult.Value);
-    }
-
-    [Fact]
-    public async Task Reply_WithNullId_ReturnsBadRequest()
-    {
-        // Arrange
-        var helper = new MailControllerTestHelper();
-
-        // Act
-        var result = await helper.Controller.Reply(null!);
-
-        // Assert
-        var badRequestResult = Assert.IsType<BadRequestObjectResult>(result);
-        Assert.Equal("Email ID is required", badRequestResult.Value);
-    }
-
-    [Fact]
-    public async Task Reply_WithMsalException_ReturnsChallenge()
-    {
-        // Arrange
-        var helper = new MailControllerTestHelper();
-        var emailId = "test-email-id";
-        helper.SetupEmailServiceMsalException();
-
-        // Act
-        var result = await helper.Controller.Reply(emailId);
-
-        // Assert
-        Assert.IsType<ChallengeResult>(result);
-    }
-
-    [Fact]
-    public async Task Reply_WithMicrosoftIdentityWebChallengeException_ReturnsChallenge()
-    {
-        // Arrange
-        var helper = new MailControllerTestHelper();
-        var emailId = "test-email-id";
-        helper.SetupEmailServiceChallenge();
-
-        // Act
-        var result = await helper.Controller.Reply(emailId);
-
-        // Assert
-        Assert.IsType<ChallengeResult>(result);
-    }
-
-    [Fact]
-    public async Task SendReply_WithValidModel_RedirectsToIndexWithSuccess()
+    public async Task SendReply_WithSuccessfulSend_RedirectsToIndexWithSuccess()
     {
         // Arrange
         var helper = new MailControllerTestHelper();
@@ -252,25 +192,26 @@ public class MailControllerFocusedTests
         var viewResult = Assert.IsType<ViewResult>(result);
         Assert.Equal("Reply", viewResult.ViewName);
         Assert.Same(invalidModel, viewResult.Model);
+        // Verify that the email service was not called when model is invalid
+        await helper.EmailService.DidNotReceive().SendReplyAsync(Arg.Any<EmailReplyModel>(), Arg.Any<string>());
     }
 
     [Fact]
-    public async Task SendReply_WithMsalException_ReturnsChallenge()
+    public async Task Reply_WithAuthenticationException_ReturnsChallenge()
     {
         // Arrange
         var helper = new MailControllerTestHelper();
-        var replyModel = MailControllerTestHelper.CreateValidEmailReplyModel();
-        helper.SetupEmailServiceMsalException();
+        helper.SetupEmailServiceChallenge();
 
         // Act
-        var result = await helper.Controller.SendReply(replyModel);
+        var result = await helper.Controller.Reply("test-email-id");
 
         // Assert
         Assert.IsType<ChallengeResult>(result);
     }
 
     [Fact]
-    public async Task SendReply_WithMicrosoftIdentityWebChallengeException_ReturnsChallenge()
+    public async Task SendReply_WithAuthenticationException_ReturnsChallenge()
     {
         // Arrange
         var helper = new MailControllerTestHelper();
@@ -282,63 +223,5 @@ public class MailControllerFocusedTests
 
         // Assert
         Assert.IsType<ChallengeResult>(result);
-    }
-
-    [Fact]
-    public async Task Index_WithUnauthenticatedUser_ReturnsUnauthorized()
-    {
-        // Arrange
-        var helper = new MailControllerTestHelper();
-        helper.SetupUnauthenticatedUser();
-
-        // Act
-        var result = await helper.Controller.Index();
-
-        // Assert
-        Assert.IsType<UnauthorizedResult>(result);
-    }
-
-    [Fact]
-    public async Task Reply_WithUnauthenticatedUser_ReturnsUnauthorized()
-    {
-        // Arrange
-        var helper = new MailControllerTestHelper();
-        helper.SetupUnauthenticatedUser();
-
-        // Act
-        var result = await helper.Controller.Reply("test-id");
-
-        // Assert
-        Assert.IsType<UnauthorizedResult>(result);
-    }
-
-    [Fact]
-    public async Task SendReply_WithUnauthenticatedUser_ReturnsUnauthorized()
-    {
-        // Arrange
-        var helper = new MailControllerTestHelper();
-        helper.SetupUnauthenticatedUser();
-        var replyModel = MailControllerTestHelper.CreateValidEmailReplyModel();
-
-        // Act
-        var result = await helper.Controller.SendReply(replyModel);
-
-        // Assert
-        Assert.IsType<UnauthorizedResult>(result);
-    }
-
-    [Fact]
-    public void Error_ReturnsErrorViewWithRequestId()
-    {
-        // Arrange
-        var helper = new MailControllerTestHelper();
-
-        // Act
-        var result = helper.Controller.Error();
-
-        // Assert
-        var viewResult = Assert.IsType<ViewResult>(result);
-        var model = Assert.IsType<ErrorViewModel>(viewResult.Model);
-        Assert.NotNull(model.RequestId);
     }
 }

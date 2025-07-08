@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.Exchange.WebServices.Data;
 using Microsoft.Identity.Web;
 using Task = System.Threading.Tasks.Task;
+using DomainEmailMessage = Contoso.Mail.Models.EmailMessage;
 
 namespace Contoso.Mail.Controllers;
 
@@ -66,7 +67,7 @@ public class MailController : Controller
         {
             _logger.LogError(ex, "Error retrieving mailbox items");
             ModelState.AddModelError("", "Error retrieving mailbox items: " + ex.Message);
-            return View(new List<EmailMessage>());
+            return View(new List<DomainEmailMessage>());
         }
     }
 
