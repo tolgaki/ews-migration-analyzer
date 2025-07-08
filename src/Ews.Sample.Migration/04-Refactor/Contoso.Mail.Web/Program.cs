@@ -22,23 +22,11 @@ public partial class Program // Make Program public and in global namespace for 
         builder.Services.AddControllersWithViews();
         builder.Services.AddRazorPages();
 
-        // Configure email service implementation based on configuration
-        var useGraphApi = builder.Configuration.GetValue<bool>("EmailService:UseGraphApi", false);
+        // Add Graph SDK with configuration
+        builder.Services.AddMicrosoftGraph(builder.Configuration.GetSection("MicrosoftGraph"));
 
-        if (useGraphApi)
-        {
-            // Add Graph SDK with basic configuration
-            builder.Services.AddMicrosoftGraph(builder.Configuration.GetSection("GraphApi"));
-
-            // Register Graph API implementation
-            builder.Services.AddScoped<IEmailService, GraphEmailService>();
-        }
-        else
-        {
-            // Register EWS implementation (default)
-            builder.Services.AddScoped<IExchangeServiceFactory, ExchangeServiceFactory>();
-            builder.Services.AddScoped<IEmailService, EwsEmailService>();
-        }
+        // Register Graph API implementation as the only email service
+        builder.Services.AddScoped<IEmailService, GraphEmailService>();
 
         var app = builder.Build();
 

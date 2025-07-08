@@ -2,13 +2,13 @@
 
 ## Project Overview
 
-Contoso.Mail.Web is an ASP.NET Core Razor Pages application that provides a web interface for viewing and replying to emails using Exchange Web Services (EWS). The application demonstrates how to use EWS to interact with Microsoft Exchange mailboxes, and serves as a reference implementation for migrating from EWS to Microsoft Graph API.
+Contoso.Mail.Web is an ASP.NET Core Razor Pages application that provides a web interface for viewing and replying to emails using Microsoft Graph API. The application demonstrates modern email integration using Microsoft's Graph API platform.
 
 ### Key Features
 
 - User authentication via Microsoft Identity Platform (Azure AD)
-- Email listing from user's inbox using EWS
-- Ability to reply to emails using EWS
+- Email listing from user's inbox using Microsoft Graph API
+- Ability to reply to emails using Microsoft Graph API
 - End-to-end (E2E) testing with Playwright
 
 ## Solution Architecture
@@ -24,7 +24,7 @@ The solution consists of the following projects:
 - **.NET 9** - Target framework
 - **ASP.NET Core Razor Pages** - Web application framework
 - **Microsoft Identity Web** - Authentication and authorization
-- **EWS Managed API** - Exchange Web Services integration
+- **Microsoft Graph API** - Email integration
 - **Playwright** - End-to-end testing framework
 - **TypeScript** - Used for Playwright test implementation
 - **xUnit** - Unit testing framework
@@ -32,7 +32,7 @@ The solution consists of the following projects:
 
 ## Microsoft Graph API Best Practices
 
-As part of the migration from EWS to Microsoft Graph API, follow these best practices when implementing Graph API functionality:
+Follow these best practices when implementing Graph API functionality:
 
 ### 1. Authentication and Authorization
 
@@ -57,7 +57,8 @@ builder.Services
 
 ### 2. GraphServiceClient Configuration
 
-#### Dependency Injection Setup// Register GraphServiceClient with proper authentication
+#### Dependency Injection Setup
+// Register GraphServiceClient with proper authentication
 builder.Services.AddScoped<GraphServiceClient>(provider =>
 {
     var tokenAcquisition = provider.GetRequiredService<ITokenAcquisition>();
@@ -87,19 +88,22 @@ catch (MsalUiRequiredException)
 }
 ### 3. Efficient Data Retrieval
 
-#### Use $select to limit returned propertiesvar messages = await graphServiceClient.Me.Messages
+#### Use $select to limit returned properties
+var messages = await graphServiceClient.Me.Messages
     .GetAsync(requestConfiguration =>
     {
         requestConfiguration.QueryParameters.Select = ["id", "subject", "from", "receivedDateTime", "bodyPreview"];
         requestConfiguration.QueryParameters.Top = 10;
     });
-#### Use $filter for server-side filteringvar unreadMessages = await graphServiceClient.Me.Messages
+#### Use $filter for server-side filtering
+var unreadMessages = await graphServiceClient.Me.Messages
     .GetAsync(requestConfiguration =>
     {
         requestConfiguration.QueryParameters.Filter = "isRead eq false";
         requestConfiguration.QueryParameters.Top = 50;
     });
-#### Implement Paginationvar allMessages = new List<Message>();
+#### Implement Pagination
+var allMessages = new List<Message>();
 var messages = await graphServiceClient.Me.Messages.GetAsync();
 
 while (messages?.Value?.Count > 0)
@@ -120,7 +124,8 @@ while (messages?.Value?.Count > 0)
 ### 4. Request Optimization
 
 #### Batch Requests
-Use batch requests for multiple operations:var batchRequestContent = new BatchRequestContentCollection(graphServiceClient);
+Use batch requests for multiple operations:
+var batchRequestContent = new BatchRequestContentCollection(graphServiceClient);
 var request1 = graphServiceClient.Me.Messages["messageId1"].ToGetRequestInformation();
 var request2 = graphServiceClient.Me.Messages["messageId2"].ToGetRequestInformation();
 
@@ -128,7 +133,8 @@ var batch = await batchRequestContent.AddBatchRequestStepAsync(request1);
 await batchRequestContent.AddBatchRequestStepAsync(request2);
 
 var response = await graphServiceClient.Batch.PostAsync(batchRequestContent);
-#### Delta Queries for Change Tracking// Initial request with delta
+#### Delta Queries for Change Tracking
+// Initial request with delta
 var deltaMessages = await graphServiceClient.Me.Messages.Delta.GetAsync();
 
 // Store the deltaLink for future requests
@@ -140,7 +146,8 @@ var changes = await graphServiceClient.Me.Messages.Delta
     .GetAsync();
 ### 5. Rate Limiting and Throttling
 
-#### Implement Retry Logicpublic async Task<T> ExecuteWithRetryAsync<T>(Func<Task<T>> operation, int maxRetries = 3)
+#### Implement Retry Logic
+public async Task<T> ExecuteWithRetryAsync<T>(Func<Task<T>> operation, int maxRetries = 3)
 {
     for (int attempt = 0; attempt < maxRetries; attempt++)
     {
@@ -165,7 +172,8 @@ var changes = await graphServiceClient.Me.Messages.Delta
 
 ### 6. Testing Graph API Code
 
-#### Unit Testing with Mocking[Fact]
+#### Unit Testing with Mocking
+[Fact]
 public async Task GetMessagesAsync_ShouldReturnMessages()
 {
     // Arrange
@@ -198,7 +206,8 @@ public async Task GetMessagesAsync_ShouldReturnMessages()
 - Configure HttpClient properly in DI container
 - Use connection pooling
 
-#### Caching Strategies// Cache frequently accessed data
+#### Caching Strategies
+// Cache frequently accessed data
 [MemoryCache(Duration = 300)] // 5 minutes
 public async Task<User> GetCurrentUserAsync()
 {
@@ -226,10 +235,10 @@ public async Task<User> GetCurrentUserAsync()
 - Implement proper error handling without exposing sensitive data
 - Follow GDPR and other privacy regulations
 
-### 9. Migration from EWS
+### 9. Service Interface Implementation
 
-#### Service Interface Compatibility
-When migrating from EWS, maintain the same service interfaces:public interface IEmailService
+Maintain clean service interfaces:
+public interface IEmailService
 {
     Task<IList<EmailMessage>> GetInboxEmailsAsync(string userEmail, int count = 10);
     Task<EmailMessage?> GetEmailByIdAsync(string emailId, string userEmail);
@@ -249,7 +258,8 @@ public class GraphEmailService : IEmailService
     // Implement interface methods using Graph API
 }
 #### Data Model Mapping
-Create mapping between EWS models and Graph models:public static class MessageMapper
+Create mapping between Graph models and domain models:
+public static class MessageMapper
 {
     public static EmailMessage ToEmailMessage(this Message graphMessage)
     {
@@ -265,7 +275,8 @@ Create mapping between EWS models and Graph models:public static class MessageMa
 }
 ### 10. Monitoring and Logging
 
-#### Request Logging// Add logging to Graph requests
+#### Request Logging
+// Add logging to Graph requests
 public class LoggingGraphEmailService : IEmailService
 {
     private readonly GraphServiceClient _graphServiceClient;
@@ -295,11 +306,11 @@ public class LoggingGraphEmailService : IEmailService
 - Monitor rate limit usage
 - Log throttling events
 
-By following these best practices, you'll ensure a successful migration from EWS to Microsoft Graph API while maintaining performance, security, and reliability.
+By following these best practices, you'll ensure optimal performance, security, and reliability with Microsoft Graph API.
 
 ## Unit Testing with xUnit
 
-The project uses xUnit for unit testing to ensure code quality and facilitate the transition from EWS to Microsoft Graph API. Here's guidance on working with unit tests:
+The project uses xUnit for unit testing to ensure code quality. Here's guidance on working with unit tests:
 
 ### Test Project Structure
 
@@ -325,18 +336,18 @@ The project uses xUnit for unit testing to ensure code quality and facilitate th
    - Use meaningful assertions that clearly indicate what's being tested
 
 3. **Mocking Dependencies**:
-   - Use Moq for mocking interfaces and external dependencies
+   - Use NSubstitute for mocking interfaces and external dependencies
    - Create reusable mock setups for common scenarios
    - Consider creating a test base class for common mock setups
 
-### Testing EWS Components
+### Testing Graph Components
 
-When writing tests for components that use EWS:
+When writing tests for components that use Graph API:
 
-1. Create interface abstractions for EWS services to facilitate mocking
+1. Create interface abstractions for Graph services to facilitate mocking
 2. Use dependency injection to inject these interfaces
-3. Mock the EWS responses to test different scenarios
-4. Create test data that mimics EWS responses
+3. Mock the Graph responses to test different scenarios
+4. Create test data that mimics Graph responses
 
 ### Testing Authentication
 
@@ -384,7 +395,7 @@ When writing tests that require authentication:
 ## Upcoming Development
 
 1. **Refactoring for modularity** - Improving code organization and separation of concerns
-2. **Migrating from EWS to Microsoft Graph API** - Replacing EWS components with Graph API equivalents
+2. **Enhanced Graph API features** - Adding more advanced Graph API capabilities
 
 ## Best Practices
 
@@ -403,8 +414,10 @@ When modifying or adding to the codebase, please follow these guidelines:
 
 ### Running Unit Tests
 dotnet test ProjectName.Tests
-With test filter:dotnet test --filter "Category=UnitTest"
-With coverage:dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=cobertura
+With test filter:
+dotnet test --filter "Category=UnitTest"
+With coverage:
+dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=cobertura
 ### Creating a New Test Class
 
 1. Create a new class in the appropriate test project
@@ -412,7 +425,8 @@ With coverage:dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=cobert
 3. Use the xUnit `[Fact]` attribute for simple tests
 4. Use the xUnit `[Theory]` attribute with `[InlineData]` for parameterized tests
 
-Example:public class MailServiceTests
+Example:
+public class MailServiceTests
 {
     [Fact]
     public async Task GetMailbox_WithValidCredentials_ReturnsEmailList()

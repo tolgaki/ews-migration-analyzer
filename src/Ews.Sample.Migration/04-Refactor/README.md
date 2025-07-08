@@ -118,16 +118,42 @@ All that remains now to complete the migration is to remove all references to EW
 
 ### Remove EWS References
 
+Technically, the solution meets the requirements for deprecation of EWS now. All EWS calls are disabled using the `UseGraphAPI` configuration setting. It may make sense to keep the EWS implementation around if the application also needs to connect to on-premises Exchange servers where Graph API is not available and EWS will continue to be a great option.
 
+For the purposes of this sample, we will remove the EWS implementation and all references to EWS. To accomplish that we can again call on Copilot with the prompt:
 
+```prompt
+Remove all references to EWS including logic, tests and NuGet packages specific to EWS
+```
 
+Because we have separated the concerns of the web controller from the Email related logic, removing EWS logic can be accomplished by deleting files, e.g. `EwsEmailService.cs` and `ExchangeServiceFactory.cs` removing the EWS NuGet package and deleting the test classes implementing EWS specific tests without affecting the rest of the application. The changes to Program.cs are also well contained in the EWS branch of the feature toggle responding to the `UseGraphApi` setting.
 
+Copilot will even clean up the `copilot-instructions.md` file and several README.md files to EWS specific text.
 
+![Changes to remove EWS references](../../../docs/images/Migration-GraphApi-RemovingEwsReferences.png)
 
+When Copilot was done, in my case, all that was left to do was remove an unused using statement for Microsoft.Exchange and several `catch` blocks for `ServiceResponseExceptions` that are EWS specific and could have been wrapped in the EwsEmailService implementation to avoid leaking EWS specific exceptions into the web controller.
 
+The number of tests shrank back from 82 to 62, all passing and the app continued to work using Graph API.
 
+Copilot also removed the Ews.Analyzer package from the solution. To double check that there are no EWS references left, we can add the analyzer back and rebuild the solution. The analyzer should not report any EWS references.
 
-## Next Steps
+![Clean Ews Analyzer report](../../../docs/images/Migration-GraphApi-CleanEwsAnalyzerReport.png)
 
-1. Refactor application for modularity
-1. Implement EWS components with Graph API
+### Conclusion
+
+We started with an application that was tightly coupled to EWS without tests and documentation. We shored up the foundation by documenting the code, adding tests and refactoring the code to separate concerns without writing much code by hand.
+
+After stabilizing the application, we implemented the Graph API equivalent version of the email service. Copilot wrote most of the code based on common sense prompts while updating and adding tests and documenting the work it was doing. We maintained code quality throughout with 0 errors, warnings and messages from code quality analyzers.
+
+.NET Aspire in conjunction with Copilots ability to analyze logs helped us troubleshoot some authentication issues that Copilot was explain and fix without in plain language.
+
+In the end we had flexibility in whether we wanted to keep the EWS implementation around for use with on-premises Exchange or while we wait for feature gaps in Graph API to be filled. We elected to remove it completely.
+
+Copilot was able to remove all references to EWS in one shot except for a couple of using statements and EWS specific Exceptions that were easily removed by hand.
+
+I hope you can see that Copilot is a great tool reducing technical debt, improving code quality and documenting the status quo as well as implementing new features based on the established coding style and technology specific best practices.
+
+A chore like migrating EWS applications to Graph can be a great learning opportunity to dig deeper into AI based code generation tools while obliterating technical debt.
+
+If you run into any issues or have ideas for extending the tools and methodologies presented in this migration series, leave us a comment or create a [GitHub Issue](https://github.com/OfficeDev/ews-migration-analyzer/issues)

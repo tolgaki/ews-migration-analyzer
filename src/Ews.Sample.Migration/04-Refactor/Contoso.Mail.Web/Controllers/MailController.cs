@@ -4,9 +4,7 @@ using Contoso.Mail.Models;
 using Contoso.Mail.Web.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.Exchange.WebServices.Data;
 using Microsoft.Identity.Web;
-using Task = System.Threading.Tasks.Task;
 using DomainEmailMessage = Contoso.Mail.Models.EmailMessage;
 
 namespace Contoso.Mail.Controllers;
@@ -117,13 +115,6 @@ public class MailController : Controller
             _logger.LogWarning(ex, "Authentication challenge required for MSAL");
             return Challenge();
         }
-        catch (ServiceResponseException ex)
-        {
-            _logger.LogError(ex, "EWS service response error");
-            ModelState.AddModelError(string.Empty, $"EWS service error: {ex.Message}");
-            TempData["ErrorMessage"] = $"Could not retrieve email: {ex.Message}";
-            return RedirectToAction(nameof(Index));
-        }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Unexpected error in Reply action");
@@ -180,12 +171,6 @@ public class MailController : Controller
         {
             _logger.LogWarning(ex, "Authentication challenge required for MSAL");
             return Challenge();
-        }
-        catch (ServiceResponseException ex)
-        {
-            _logger.LogError(ex, "EWS service response error while sending reply");
-            ModelState.AddModelError(string.Empty, $"EWS service error: {ex.Message}");
-            return View("Reply", model);
         }
         catch (Exception ex)
         {
