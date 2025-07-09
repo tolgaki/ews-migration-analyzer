@@ -2,7 +2,7 @@
 
 ## Overview
 
-EWS has been identified as a security vulnerability and will be disabled in October 2026. This means all applications using EWS must either be sunset or migrated to a supported API, such as Microsoft Graph API.
+EWS has been identified as a security vulnerability and will be disabled in October 2026 for Exchange Online (EWS will continue to work for Exchange Server on-premises). This means all applications using EWS must either be sunset or migrated to a supported API, such as Microsoft Graph API.
 
 The many applications using EWS have been built a over the past 20 years reflect a variety of design patterns and coding practices. It is highly likely that the applications weren't written by the teams now responsible for modernizing them. Documentation and automated tests may be lacking or out of date. All of these factors can make getting started a challenge and upgrading the applications a chore.
 
