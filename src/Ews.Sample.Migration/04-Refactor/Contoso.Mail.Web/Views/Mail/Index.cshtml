@@ -1,0 +1,57 @@
+@model IEnumerable<Contoso.Mail.Models.EmailMessage>
+@{
+    ViewData["Title"] = "Mailbox";
+}
+<h2>Mailbox</h2>
+<div class="mb-3">
+    <strong>@ViewBag.DisplayName</strong><br />
+    <span>@ViewBag.Email</span>
+</div>
+
+@if (TempData["SuccessMessage"] != null)
+{
+    <div class="alert alert-success alert-dismissible fade show" role="alert">
+        @TempData["SuccessMessage"]
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+    </div>
+}
+
+@if (TempData["ErrorMessage"] != null)
+{
+    <div class="alert alert-danger alert-dismissible fade show" role="alert">
+        @TempData["ErrorMessage"]
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+    </div>
+}
+
+@if (!ViewData.ModelState.IsValid)
+{
+    <div class="alert alert-danger">
+        <div asp-validation-summary="All" class="text-danger"></div>
+    </div>
+}
+
+<h3>First 10 Mail Items</h3>
+<table class="table">
+    <thead>
+        <tr>
+            <th>Subject</th>
+            <th>From</th>
+            <th>Date</th>
+            <th>Actions</th>
+        </tr>
+    </thead>
+    <tbody>
+    @foreach (var mail in Model)
+    {
+        <tr>
+            <td>@mail.Subject</td>
+            <td>@mail.From</td>
+            <td>@mail.DateTimeReceived.ToString("g")</td>
+            <td>
+                <a class="btn btn-primary btn-sm" asp-action="Reply" asp-route-id="@mail.Id">Reply</a>
+            </td>
+        </tr>
+    }
+    </tbody>
+</table>
