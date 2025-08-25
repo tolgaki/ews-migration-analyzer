@@ -1,0 +1,44 @@
+name: EWS Analyzer CI
+
+on:
+  push:
+    branches: [ main, develop ]
+    paths:
+      - 'src/Ews.Code.Analyzer/**'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'src/Ews.Code.Analyzer/**'
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: '8.0.x'
+        
+    - name: Restore dependencies
+      run: dotnet restore src/Ews.Code.Analyzer/Ews.Analyzer.sln
+      
+    - name: Build solution
+      run: dotnet build src/Ews.Code.Analyzer/Ews.Analyzer.sln --no-restore --configuration Release
+      
+    - name: Test Analyzer
+      run: dotnet test src/Ews.Code.Analyzer/Ews.Analyzer.Test --no-build --configuration Release --verbosity normal
+      
+    - name: Test MCP Service
+      run: dotnet test src/Ews.Code.Analyzer/Ews.Analyzer.McpService.Tests --no-build --configuration Release --verbosity normal
+      
+    - name: Build MCP Service specifically
+      run: dotnet build src/Ews.Code.Analyzer/Ews.Analyzer.McpService --no-restore --configuration Release
+      
+    - name: Test MCP Service functionality
+      run: |
+        cd src/Ews.Code.Analyzer/Ews.Analyzer.McpService
+        echo '{"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}}' | dotnet run --configuration Release
+        echo '{"jsonrpc": "2.0", "id": 2, "method": "tools/list"}' | dotnet run --configuration Release
