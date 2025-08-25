@@ -15,180 +15,274 @@ class Program
         string? line;
         while ((line = Console.ReadLine()) != null)
         {
-            using var doc = JsonDocument.Parse(line);
-            var root = doc.RootElement;
-            var idElement = root.GetProperty("id");
-            var method = root.GetProperty("method").GetString();
-            object result;
-
-            switch (method)
+            try
             {
-                case "initialize":
-                    result = new { capabilities = new { } };
-                    break;
-                case "tools/list":
-                    result = new
-                    {
-                        tools = new object[]
+                using var doc = JsonDocument.Parse(line);
+                var root = doc.RootElement;
+                var idElement = root.GetProperty("id");
+                var method = root.GetProperty("method").GetString();
+                object result;
+
+                switch (method)
+                {
+                    case "initialize":
+                        result = new { capabilities = new { } };
+                        break;
+                    case "tools/list":
+                        result = new
                         {
-                            new
+                            tools = new object[]
                             {
-                                name = "analyzeCode",
-                                description = "Run EWS analyzer on provided C# source code",
-                                inputSchema = new
+                                new
                                 {
-                                    type = "object",
-                                    properties = new
+                                    name = "analyzeCode",
+                                    description = "Run EWS analyzer on provided C# source code",
+                                    inputSchema = new
                                     {
-                                        code = new
+                                        type = "object",
+                                        properties = new
                                         {
-                                            type = "string",
-                                            description = "C# source code to analyze"
-                                        }
-                                    },
-                                    required = new[] { "code" }
-                                }
-                            },
-                            new
-                            {
-                                name = "getRoadmap",
-                                description = "Return migration roadmap for an EWS operation",
-                                inputSchema = new
+                                            code = new
+                                            {
+                                                type = "string",
+                                                description = "C# source code to analyze"
+                                            }
+                                        },
+                                        required = new[] { "code" }
+                                    }
+                                },
+                                new
                                 {
-                                    type = "object",
-                                    properties = new
+                                    name = "getRoadmap",
+                                    description = "Return migration roadmap for an EWS operation",
+                                    inputSchema = new
                                     {
-                                        operation = new
+                                        type = "object",
+                                        properties = new
                                         {
-                                            type = "string",
-                                            description = "EWS operation name"
-                                        }
-                                    },
-                                    required = new[] { "operation" }
+                                            operation = new
+                                            {
+                                                type = "string",
+                                                description = "EWS operation name"
+                                            }
+                                        },
+                                        required = new[] { "operation" }
+                                    }
                                 }
                             }
-                        }
-                    };
+                        };
+                        break;
+                    case "tools/call":
+                        result = await HandleToolCallAsync(root.GetProperty("params"));
+                        break;
+                    case "shutdown":
+                        result = new { status = "shutdown" };
+                        break;
+                    default:
+                        result = new
+                        {
+                            error = $"Unknown method {method}"
+                        };
+                        break;
+                }
+
+                object id = idElement.ValueKind switch
+                {
+                    JsonValueKind.Number => idElement.GetInt32(),
+                    JsonValueKind.String => idElement.GetString()!,
+                    _ => null!
+                };
+
+                var response = new
+                {
+                    jsonrpc = "2.0",
+                    id,
+                    result
+                };
+
+                Console.WriteLine(JsonSerializer.Serialize(response));
+
+                if (method == "shutdown")
+                {
                     break;
-                case "tools/call":
-                    result = await HandleToolCallAsync(root.GetProperty("params"));
-                    break;
-                case "shutdown":
-                    result = null;
-                    break;
-                default:
-                    result = new
-                    {
-                        error = $"Unknown method {method}"
-                    };
-                    break;
+                }
             }
-
-            object id = idElement.ValueKind switch
+            catch (JsonException ex)
             {
-                JsonValueKind.Number => idElement.GetInt32(),
-                JsonValueKind.String => idElement.GetString()!,
-                _ => null!
-            };
-
-            var response = new
+                // Send error response for invalid JSON
+                var errorResponse = new
+                {
+                    jsonrpc = "2.0",
+                    id = (object?)null,
+                    error = new
+                    {
+                        code = -32700,
+                        message = "Parse error",
+                        data = ex.Message
+                    }
+                };
+                Console.WriteLine(JsonSerializer.Serialize(errorResponse));
+            }
+            catch (Exception ex)
             {
-                jsonrpc = "2.0",
-                id,
-                result
-            };
-
-            Console.WriteLine(JsonSerializer.Serialize(response));
-
-            if (method == "shutdown")
-            {
-                break;
+                // Send error response for other exceptions
+                var errorResponse = new
+                {
+                    jsonrpc = "2.0",
+                    id = (object?)null,
+                    error = new
+                    {
+                        code = -32603,
+                        message = "Internal error",
+                        data = ex.Message
+                    }
+                };
+                Console.WriteLine(JsonSerializer.Serialize(errorResponse));
             }
         }
     }
 
     private static async Task<object> HandleToolCallAsync(JsonElement element)
     {
-        var name = element.GetProperty("name").GetString();
-        var args = element.GetProperty("arguments");
-
-        switch (name)
+        try
         {
-            case "analyzeCode":
-                var code = args.GetProperty("code").GetString() ?? string.Empty;
-                var diagnostics = await AnalyzeAsync(code);
-                return new
-                {
-                    content = new object[]
+            var name = element.GetProperty("name").GetString();
+            var args = element.GetProperty("arguments");
+
+            switch (name)
+            {
+                case "analyzeCode":
+                    var code = args.GetProperty("code").GetString() ?? string.Empty;
+                    var diagnostics = await AnalyzeAsync(code);
+                    return new
                     {
-                        new
+                        content = new object[]
                         {
-                            type = "text",
-                            text = JsonSerializer.Serialize(diagnostics)
+                            new
+                            {
+                                type = "text",
+                                text = JsonSerializer.Serialize(diagnostics)
+                            }
                         }
-                    }
-                };
-            case "getRoadmap":
-                var operation = args.GetProperty("operation").GetString() ?? string.Empty;
-                var roadmap = GetRoadmap(operation);
-                return new
-                {
-                    content = new object[]
+                    };
+                case "getRoadmap":
+                    var operation = args.GetProperty("operation").GetString() ?? string.Empty;
+                    var roadmap = GetRoadmap(operation);
+                    return new
                     {
-                        new
+                        content = new object[]
                         {
-                            type = "text",
-                            text = JsonSerializer.Serialize(roadmap)
+                            new
+                            {
+                                type = "text",
+                                text = JsonSerializer.Serialize(roadmap)
+                            }
                         }
-                    }
-                };
-            default:
-                return new
-                {
-                    content = new object[]
+                    };
+                default:
+                    return new
                     {
-                        new
+                        content = new object[]
                         {
-                            type = "text",
-                            text = $"Unknown tool {name}"
+                            new
+                            {
+                                type = "text",
+                                text = $"Unknown tool {name}"
+                            }
                         }
+                    };
+            }
+        }
+        catch (Exception ex)
+        {
+            return new
+            {
+                content = new object[]
+                {
+                    new
+                    {
+                        type = "text",
+                        text = $"Error handling tool call: {ex.Message}"
                     }
-                };
+                }
+            };
         }
     }
 
     private static async Task<IEnumerable<object>> AnalyzeAsync(string code)
     {
-        var tree = CSharpSyntaxTree.ParseText(code);
-        var compilation = CSharpCompilation.Create(
-            "Analysis",
-            new[] { tree },
-            new[] { MetadataReference.CreateFromFile(typeof(object).Assembly.Location) },
-            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
-
-        var analyzer = new EwsAnalyzer();
-        var compilationWithAnalyzers = new CompilationWithAnalyzers(
-            compilation,
-            ImmutableArray.Create<DiagnosticAnalyzer>(analyzer));
-
-        var diagnostics = await compilationWithAnalyzers.GetAnalyzerDiagnosticsAsync();
-        var list = new List<object>();
-        foreach (var d in diagnostics)
+        try
         {
-            list.Add(new
+            var tree = CSharpSyntaxTree.ParseText(code);
+            var compilation = CSharpCompilation.Create(
+                "Analysis",
+                new[] { tree },
+                new[] { MetadataReference.CreateFromFile(typeof(object).Assembly.Location) },
+                new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+
+            var analyzer = new EwsAnalyzer();
+            var compilationWithAnalyzers = new CompilationWithAnalyzers(
+                compilation,
+                ImmutableArray.Create<DiagnosticAnalyzer>(analyzer),
+                new AnalyzerOptions(ImmutableArray<AdditionalText>.Empty));
+
+            var diagnostics = await compilationWithAnalyzers.GetAnalyzerDiagnosticsAsync();
+            var list = new List<object>();
+            foreach (var d in diagnostics)
             {
-                id = d.Id,
-                message = d.GetMessage(),
-                severity = d.Severity.ToString(),
-                location = d.Location.GetLineSpan().StartLinePosition.Line + 1
-            });
+                list.Add(new
+                {
+                    id = d.Id,
+                    message = d.GetMessage(),
+                    severity = d.Severity.ToString(),
+                    location = d.Location.GetLineSpan().StartLinePosition.Line + 1
+                });
+            }
+            return list;
         }
-        return list;
+        catch (Exception ex)
+        {
+            // Return error information as a diagnostic-like object
+            return new[]
+            {
+                new
+                {
+                    id = "ERROR",
+                    message = $"Analysis failed: {ex.Message}",
+                    severity = "Error",
+                    location = 1
+                }
+            };
+        }
     }
 
     private static EwsMigrationRoadmap GetRoadmap(string operation)
     {
         var navigator = new EwsMigrationNavigator();
-        return navigator.GetMapByEwsOperation(operation);
+        var roadmap = navigator.GetMapByEwsOperation(operation);
+        
+        // If no specific mapping found, return a default roadmap with operation info
+        if (roadmap == null)
+        {
+            return new EwsMigrationRoadmap
+            {
+                Title = $"Unknown Operation: {operation}",
+                EwsSoapOperation = operation,
+                FunctionalArea = "Unknown",
+                EwsSdkMethodName = "Unknown",
+                EwsSdkQualifiedName = "Unknown",
+                EWSDocumentationUrl = "https://aka.ms/ews1pageGH",
+                GraphApiDocumentationUrl = "https://aka.ms/ewsMapGH",
+                GraphApiEta = "TBD",
+                GraphApiGapFillPlan = "No mapping available",
+                GraphApiHasParity = false,
+                CopilotPromptTemplate = null,
+                GraphApiDisplayName = null,
+                GraphApiHttpRequest = null,
+                GraphApiStatus = "Not Available"
+            };
+        }
+        
+        return roadmap;
     }
 }
