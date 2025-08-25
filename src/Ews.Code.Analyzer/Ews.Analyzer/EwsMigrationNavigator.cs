@@ -16,15 +16,48 @@ namespace Ews.Analyzer
 {
     public class EwsMigrationNavigator
     {
-        public List<EwsMigrationRoadmap> Map;
+        public List<EwsMigrationRoadmap> Map { get; }
+        private static readonly object _initLock = new object();
+        private static List<EwsMigrationRoadmap> _cached;
 
         public EwsMigrationNavigator()
         {
-            // Initialize Map with 5 entries
-            Map = new List<EwsMigrationRoadmap>
+            if (_cached == null)
             {
-                // TODO Generate the entries
-            };
+                lock (_initLock)
+                {
+                    if (_cached == null)
+                    {
+                        try
+                        {
+                            var asm = typeof(EwsMigrationNavigator).Assembly;
+                            var resourceName = asm.GetManifestResourceNames()
+                                .FirstOrDefault(n => n.EndsWith("roadmap.json", StringComparison.OrdinalIgnoreCase));
+                            if (resourceName != null)
+                            {
+                                using var stream = asm.GetManifestResourceStream(resourceName);
+                                using var reader = new System.IO.StreamReader(stream);
+                                var json = reader.ReadToEnd();
+                                var options = new System.Text.Json.JsonSerializerOptions
+                                {
+                                    PropertyNameCaseInsensitive = true
+                                };
+                                var list = System.Text.Json.JsonSerializer.Deserialize<List<EwsMigrationRoadmap>>(json, options);
+                                _cached = list ?? new List<EwsMigrationRoadmap>();
+                            }
+                            else
+                            {
+                                _cached = new List<EwsMigrationRoadmap>();
+                            }
+                        }
+                        catch
+                        {
+                            _cached = new List<EwsMigrationRoadmap>();
+                        }
+                    }
+                }
+            }
+            Map = _cached;
         }
 
         private static EwsMigrationRoadmap defaultRoadmap = new EwsMigrationRoadmap

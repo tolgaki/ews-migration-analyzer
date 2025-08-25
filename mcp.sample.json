@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "ews-analyzer": {
+      "command": "dotnet",
+      "args": ["run", "--project", "src/Ews.Code.Analyzer/Ews.Analyzer.McpService/Ews.Analyzer.McpService.csproj"],
+      "env": {},
+      "alwaysAllow": true
+    }
+  }
+}

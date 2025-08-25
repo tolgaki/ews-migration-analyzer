@@ -28,6 +28,78 @@ The EWS Code Analyzer is located in folder `/src/Ews.CodeAnalyzer`.
 
 See the [EWS Code Analyzer Readme](src/Ews.Code.Analyzer/README.md) for more information on how to set up and run the tools.
 
+## MCP Server (GitHub Copilot Integration)
+
+An experimental Model Context Protocol (MCP) server is included to allow GitHub Copilot (and other MCP-aware clients) to:
+
+- Analyze snippets / files / directories for EWS usage
+- List EWS SDK invocation sites with Graph migration metadata
+- Retrieve migration roadmap entries (also exposed as MCP resources)
+- Generate a tailored prompt to convert one EWS usage to Microsoft Graph (also via MCP prompts)
+- Stream partial progress notifications (when verbose logging enabled)
+
+Location: `src/Ews.Code.Analyzer/Ews.Analyzer.McpService`
+
+### Running Locally
+
+1. Restore & build:
+	 ```bash
+	 dotnet build src/Ews.Code.Analyzer/Ews.Analyzer.McpService/Ews.Analyzer.McpService.csproj
+	 ```
+2. (Optional) Run standalone and send JSON-RPC lines:
+	 ```bash
+	 dotnet run --project src/Ews.Code.Analyzer/Ews.Analyzer.McpService/Ews.Analyzer.McpService.csproj
+	 ```
+
+### Sample `mcp.json`
+
+Place this in your Copilot client configuration (or use the provided `mcp.sample.json`).
+
+```json
+{
+	"mcpServers": {
+		"ews-analyzer": {
+			"command": "dotnet",
+			"args": ["run", "--project", "src/Ews.Code.Analyzer/Ews.Analyzer.McpService/Ews.Analyzer.McpService.csproj"],
+			"alwaysAllow": true
+		}
+	}
+}
+```
+
+### Available Tools
+
+| Tool | Purpose |
+|------|---------|
+| analyzeSnippet | Analyze inline C# code |
+| analyzeFile | Analyze a file path (within repo allowlist) |
+| analyzeProject | Analyze all `*.cs` files under a root (capped) |
+| listEwsUsages | Return just EWS usages with Graph metadata |
+| getRoadmap | Get roadmap by SOAP op or SDK qualified name |
+| generateGraphPrompt | Produce migration prompt for Copilot |
+| setLogging | Toggle verbose notifications |
+
+### Resources & Prompts
+
+MCP Resources (URI pattern `roadmap/<EwsSoapOperation>`) expose individual roadmap entries.
+
+MCP Prompts:
+
+| Prompt | Description | Required Args |
+|--------|-------------|---------------|
+| migrate-ews-usage | Migration guidance for a single usage | sdkQualifiedName |
+| summarize-project-ews | High-level summary request (client should call analyzeProject first) | rootPath |
+
+### Security / Limits
+
+- File & project tools are restricted to the current working directory tree.
+- Max project files scanned defaults to 500 (override with `maxFiles`).
+- Basic in-memory hashing cache avoids re-analyzing unchanged code.
+
+### Roadmap
+
+Future improvements may include: MSBuild-based full project loading, code fix diffs (patch suggestions), richer caching, cancellation, and telemetry opt-in.
+
 ## Feedback
 
 We welcome your feedback on the tools in this repo and also on your migration experience from EWS to Microsoft Graph API. You can provide feedback by creating an issue in this [repo](https://github.com/OfficeDev/ews-migration-analyzer/issues) or by posting questions on StackOverflow with the tag [exchangewebservices](https://stackoverflow.com/questions/tagged/exchangewebservices).
