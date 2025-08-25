@@ -33,6 +33,8 @@ internal static class Program
 
     static async Task Main()
     {
+        // Ensure asynchronous context (addresses potential CS1998 on some builds)
+        await Task.Yield();
         string? line;
         while ((line = Console.ReadLine()) != null)
         {
@@ -49,6 +51,7 @@ internal static class Program
                     JsonValueKind.String => idElement.GetString()!,
                     _ => null!
                 } : null!;
+                if (id == null) id = Guid.NewGuid().ToString();
 
                 var method = root.GetProperty("method").GetString();
                 if (method == "cancel")
@@ -526,7 +529,8 @@ internal sealed class ToolDispatcher
             sb.AppendLine($"+// TODO: Replace EWS usage at line {diag.Key} with Microsoft Graph SDK equivalent (see mappings). This comment auto-generated.");
             sb.AppendLine($" {original}");
         }
-        return sb.Length ==0 ? Array.Empty<string>() : new[]{ sb.ToString() };
+    if (sb.Length == 0) return Array.Empty<string>();
+    return new string[]{ sb.ToString() };
     }
 
     private async Task<object> GetMigrationReadinessAsync(JsonElement args, CancellationToken ct)
@@ -578,7 +582,7 @@ internal sealed class ToolDispatcher
     // Prompts
     public IEnumerable<object> ListPrompts()
     {
-        return new []
+    return new object[]
         {
             new { name = "migrate-ews-usage", description = "General migration assistance for an EWS SDK usage", inputSchema = new { type="object", properties = new { sdkQualifiedName = new { type="string"}, code = new { type="string"}, goal = new { type="string"}}, required = new[]{"sdkQualifiedName"} } },
             new { name = "summarize-project-ews", description = "Summarize EWS usage across project", inputSchema = new { type="object", properties = new { rootPath = new { type="string"}}, required = new[]{"rootPath"} } }
@@ -631,7 +635,8 @@ internal sealed class AnalysisService
                         MetadataReference.CreateFromFile(typeof(Uri).Assembly.Location),
                     },
             new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
-    var cwa = compilation.WithAnalyzers(ImmutableArray.Create<DiagnosticAnalyzer>(_analyzer), cancellationToken: ct);
+        // Use non-obsolete overload (cooperative cancellation occurs before invocation loop)
+        var cwa = compilation.WithAnalyzers(ImmutableArray.Create<DiagnosticAnalyzer>(_analyzer));
         var diags = await cwa.GetAnalyzerDiagnosticsAsync();
         var list = new List<DiagnosticResultDto>();
         foreach (var d in diags)
