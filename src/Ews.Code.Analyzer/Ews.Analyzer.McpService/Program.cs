@@ -756,7 +756,8 @@ internal static class ProgramExtensions
     private static readonly JsonSerializerOptions opts = new JsonSerializerOptions{ PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
     public static void WriteNotification(string method, object @params)
     {
-        var env = new { jsonrpc = "2.0", method, params = @params };
+    // Use implicit property name with escaped identifier to produce JSON property "params".
+    var env = new { jsonrpc = "2.0", method, @params };
         Console.WriteLine(JsonSerializer.Serialize(env, opts));
     }
 }
