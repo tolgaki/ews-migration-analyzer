@@ -8,72 +8,71 @@ namespace Ews.Analyzer
         /// <summary>
         /// The title of the mapping entry
         /// </summary>
-    public string Title { get; set; }
+        public string Title { get; set; } = string.Empty;
 
         /// <summary>
         /// The EWS SOAP operation name
         /// </summary>
-    public string EwsSoapOperation { get; set; }
+        public string EwsSoapOperation { get; set; } = string.Empty;
 
         /// <summary>
         /// The functional area of the operation
         /// </summary>
-    public string FunctionalArea { get; set; }
+        public string FunctionalArea { get; set; } = string.Empty;
 
         /// <summary>
         /// Method name in EWS SDK
         /// </summary>
-    public string EwsSdkMethodName { get; set; }
+        public string EwsSdkMethodName { get; set; } = string.Empty;
 
         /// <summary>
         /// Fully qualified Name in EWS SDK
         /// </summary>
-    public string EwsSdkQualifiedName { get; set; }
+        public string EwsSdkQualifiedName { get; set; } = string.Empty;
 
         /// <summary>
         /// The URL to EWS documentation
         /// </summary>
-    public string EWSDocumentationUrl { get; set; }
+        public string EWSDocumentationUrl { get; set; } = string.Empty;
 
         /// <summary>
         /// The URL to Graph API documentation
         /// </summary>
-    public string GraphApiDocumentationUrl { get; set; }
+        public string GraphApiDocumentationUrl { get; set; } = string.Empty;
 
         /// <summary>
         /// Prompt template for GitHub Copilot to generate equivalent Graph API code
         /// </summary>
-    public string? CopilotPromptTemplate { get; set; }
+        public string? CopilotPromptTemplate { get; set; }
 
         /// <summary>
         /// The display name of the Graph API
         /// </summary>
-    public string? GraphApiDisplayName { get; set; }
+        public string? GraphApiDisplayName { get; set; }
 
         /// <summary>
         /// Graph API HTTP request syntax
         /// </summary>
-    public string? GraphApiHttpRequest { get; set; }
+        public string? GraphApiHttpRequest { get; set; }
 
         /// <summary>
         /// Graph API development status
         /// </summary>
-    public string GraphApiStatus { get; set; }
+        public string GraphApiStatus { get; set; } = string.Empty;
 
         /// <summary>
         /// Graph Api ETA for release
         /// </summary>
-    public string GraphApiEta { get; set; }
+        public string GraphApiEta { get; set; } = string.Empty;
 
         /// <summary>
         /// Flag indicating whether an equivalent Graph API is available
         /// </summary>
-    public bool GraphApiHasParity { get; set; }
+        public bool GraphApiHasParity { get; set; }
 
         /// <summary>
         /// Plan to fill the gap in Graph API
         /// </summary>
-    public string GraphApiGapFillPlan { get; set; }
-
+        public string GraphApiGapFillPlan { get; set; } = string.Empty;
     }
 }
