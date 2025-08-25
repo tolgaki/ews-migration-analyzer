@@ -236,7 +236,11 @@ internal sealed class ToolDispatcher
     }
 
     private object Tool(string name,string description, object singleReq)
-        => Tool(name, description, new Dictionary<string,object>{{ ((dynamic)singleReq).name, singleReq }}, new[]{ ((dynamic)singleReq).name });
+    {
+        var prop = singleReq.GetType().GetProperty("name") ?? throw new InvalidOperationException("singleReq missing name property");
+        var propName = (string)prop.GetValue(singleReq)!;
+        return Tool(name, description, new Dictionary<string,object>{{ propName, singleReq }}, new[]{ propName });
+    }
 
     private object Req(string name,string type,string description)
         => new { name, type, description };
@@ -266,12 +270,8 @@ internal sealed class ToolDispatcher
 
     private object GetRoadmap(JsonElement args)
     {
-        EwsMigrationRoadmap rm;
-        if (args.TryGetProperty("ewsSymbol", out var sym) && sym.GetString() is string symVal && !string.IsNullOrWhiteSpace(symVal))
-        {
-            rm = ResolveSymbol(symVal);
-        }
-        else if (args.TryGetProperty("ewsOperation", out var op) && op.GetString() is string o && !string.IsNullOrWhiteSpace(o))
+    EwsMigrationRoadmap rm;
+    if (args.TryGetProperty("ewsOperation", out var op) && op.GetString() is string o && !string.IsNullOrWhiteSpace(o))
             rm = _navigator.GetMapByEwsOperation(o);
         else if (args.TryGetProperty("sdkQualifiedName", out var q) && q.GetString() is string qv && !string.IsNullOrWhiteSpace(qv))
             rm = _navigator.GetMapByEwsSdkQualifiedName(qv);
@@ -631,7 +631,7 @@ internal sealed class AnalysisService
                         MetadataReference.CreateFromFile(typeof(Uri).Assembly.Location),
                     },
             new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
-        var cwa = new CompilationWithAnalyzers(compilation, ImmutableArray.Create<DiagnosticAnalyzer>(_analyzer));
+    var cwa = compilation.WithAnalyzers(ImmutableArray.Create<DiagnosticAnalyzer>(_analyzer), cancellationToken: ct);
         var diags = await cwa.GetAnalyzerDiagnosticsAsync();
         var list = new List<DiagnosticResultDto>();
         foreach (var d in diags)
@@ -754,10 +754,15 @@ internal sealed class PathSecurity
 internal static class ProgramExtensions
 {
     private static readonly JsonSerializerOptions opts = new JsonSerializerOptions{ PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
-    public static void WriteNotification(string method, object @params)
+    public static void WriteNotification(string method, object parameters)
     {
-    // Use implicit property name with escaped identifier to produce JSON property "params".
-    var env = new { jsonrpc = "2.0", method, @params };
-        Console.WriteLine(JsonSerializer.Serialize(env, opts));
+        using var doc = JsonDocument.Parse(JsonSerializer.Serialize(parameters, opts));
+        var obj = new Dictionary<string, object?>
+        {
+            ["jsonrpc"] = "2.0",
+            ["method"] = method,
+            ["params"] = parameters
+        };
+        Console.WriteLine(JsonSerializer.Serialize(obj, opts));
     }
 }

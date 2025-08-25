@@ -10,12 +10,8 @@
     </PropertyGroup>
 
     <ItemGroup>
-        <ProjectReference Include="..\Ews.Analyzer.CodeFixes\Ews.Analyzer.CodeFixes.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
-        <ProjectReference Include="..\Ews.Analyzer\Ews.Analyzer.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
-        <PackageReference Include="Ews.Analyzer" Version="1.0.0">
-          <PrivateAssets>all</PrivateAssets>
-          <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
-        </PackageReference>
+    <ProjectReference Include="..\Ews.Analyzer.CodeFixes\Ews.Analyzer.CodeFixes.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
+    <ProjectReference Include="..\Ews.Analyzer\Ews.Analyzer.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
 	    <PackageReference Include="Exchange.WebServices.Managed.NetStandard20" Version="2.2.1" />
         <PackageReference Include="Microsoft.Extensions.Configuration" Version="9.0.0" />
         <PackageReference Include="Microsoft.Extensions.Configuration.Abstractions" Version="9.0.0" />

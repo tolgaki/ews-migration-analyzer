@@ -18,7 +18,7 @@ namespace Ews.Analyzer
     {
         public List<EwsMigrationRoadmap> Map { get; }
         private static readonly object _initLock = new object();
-        private static List<EwsMigrationRoadmap> _cached;
+    private static List<EwsMigrationRoadmap>? _cached;
 
         public EwsMigrationNavigator()
         {

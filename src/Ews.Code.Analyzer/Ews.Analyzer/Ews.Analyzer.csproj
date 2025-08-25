@@ -12,7 +12,7 @@
 		<EnableNETAnalyzers>True</EnableNETAnalyzers>
 		<GeneratePackageOnBuild>False</GeneratePackageOnBuild>
 		<Title>EWS Analyzer</Title>
-		<EnforceExtendedAnalyzerRule>true</EnforceExtendedAnalyzerRule>
+		<EnforceExtendedAnalyzerRules>true</EnforceExtendedAnalyzerRules>
 
 	</PropertyGroup>
 
