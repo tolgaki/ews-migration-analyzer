@@ -14,6 +14,7 @@ using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.Diagnostics;
 using Ews.Analyzer;
+using Ews.Analyzer.McpService;
 
 using System.Runtime.CompilerServices;
 [assembly: InternalsVisibleTo("Ews.Analyzer.McpService.Tests")]
@@ -175,7 +176,13 @@ internal sealed class ToolDispatcher
     private readonly AnalysisService _analysis = new AnalysisService();
     private readonly EwsMigrationNavigator _navigator = new EwsMigrationNavigator();
     private readonly PathSecurity _paths = new PathSecurity();
+    private readonly Lazy<ConversionOrchestrator> _orchestrator;
     private bool _verbose;
+
+    public ToolDispatcher()
+    {
+        _orchestrator = new Lazy<ConversionOrchestrator>(() => new ConversionOrchestrator(_analysis, _navigator));
+    }
 
     public IEnumerable<object> ListTools()
     {
@@ -219,7 +226,23 @@ internal sealed class ToolDispatcher
                 {"maxFiles", new { type="integer", description="Max files (default 500)"}}
             }, new[]{"rootPath"}),
             Tool("addAllowedPath","Add an allowed base path for analysis", new Dictionary<string,object>{{"path", new { type="string", description="Directory to allow"}}}, new[]{"path"}),
-            Tool("listAllowedPaths","List configured allowed base paths", new Dictionary<string,object>{ })
+            Tool("listAllowedPaths","List configured allowed base paths", new Dictionary<string,object>{ }),
+            Tool("convertToGraph","Automatically convert EWS code to Microsoft Graph SDK code using a hybrid 3-tier approach (deterministic, template-LLM, full-context-LLM)", new Dictionary<string,object>{
+                {"code", new { type="string", description="Inline C# code snippet to convert"}},
+                {"path", new { type="string", description="Single file path to convert"}},
+                {"rootPath", new { type="string", description="Project root to convert all files"}},
+                {"tier", new { type="integer", description="Force a specific tier (1=deterministic, 2=template-LLM, 3=full-context-LLM). Default: auto"}},
+                {"dryRun", new { type="boolean", description="If true, return diffs without applying (default true)"}},
+                {"maxFiles", new { type="integer", description="Max files for project scan (default 200)"}}
+            }),
+            Tool("applyConversion","Apply a previously generated conversion diff to source files", new Dictionary<string,object>{
+                {"conversions", new { type="array", description="Array of {file, diff} objects from convertToGraph output", items = new { type="object" }}},
+                {"backup", new { type="boolean", description="Create .bak files before applying (default true)"}}
+            }, new[]{"conversions"}),
+            Tool("convertAuth","Convert EWS ExchangeService authentication setup to GraphServiceClient", new Dictionary<string,object>{
+                {"code", new { type="string", description="Code containing ExchangeService initialization"}},
+                {"authMethod", new { type="string", description="Target auth method: clientCredential, interactive, deviceCode, managedIdentity (default clientCredential)"}}
+            }, new[]{"code"})
         };
     }
 
@@ -264,6 +287,9 @@ internal sealed class ToolDispatcher
             "getMigrationReadiness" => await GetMigrationReadinessAsync(args, ct),
             "addAllowedPath" => AddAllowedPath(args),
             "listAllowedPaths" => ListAllowedPaths(),
+            "convertToGraph" => await ConvertToGraphAsync(args, ct),
+            "applyConversion" => await ApplyConversionAsync(args, ct),
+            "convertAuth" => ConvertAuth(args),
             _ => WrapText($"Unknown tool {name}")
         };
     }
@@ -558,6 +584,147 @@ internal sealed class ToolDispatcher
         return WrapJson(new { totalReferences = total, available, preview, unavailable, readinessPercent = readiness });
     }
 
+    // ─── Conversion Tools ─────────────────────────────────────────────
+
+    private async Task<object> ConvertToGraphAsync(JsonElement args, CancellationToken ct)
+    {
+        var orchestrator = _orchestrator.Value;
+        int? forceTier = args.TryGetProperty("tier", out var tierEl) && tierEl.ValueKind == JsonValueKind.Number
+            ? tierEl.GetInt32() : null;
+
+        // Inline code snippet
+        if (args.TryGetProperty("code", out var codeEl) && codeEl.ValueKind == JsonValueKind.String)
+        {
+            var result = await orchestrator.ConvertSnippetAsync(codeEl.GetString()!, forceTier, ct);
+            return WrapJson(new
+            {
+                conversions = new[] { FormatConversionResult(result) },
+                summary = new { totalUsages = 1, converted = result.IsValid ? 1 : 0, highConfidence = result.Confidence == "high" ? 1 : 0, mediumConfidence = result.Confidence == "medium" ? 1 : 0, lowConfidence = result.Confidence == "low" ? 1 : 0, failed = result.IsValid ? 0 : 1 }
+            });
+        }
+
+        // Single file
+        if (args.TryGetProperty("path", out var pathEl) && pathEl.ValueKind == JsonValueKind.String)
+        {
+            var path = pathEl.GetString()!;
+            if (!_paths.IsPathAllowed(path)) return WrapText("Path not allowed");
+            var results = await orchestrator.ConvertFileAsync(path, forceTier, ct);
+            return WrapJson(new
+            {
+                conversions = results.Select(FormatConversionResult),
+                summary = new
+                {
+                    totalUsages = results.Count,
+                    converted = results.Count(r => r.IsValid),
+                    highConfidence = results.Count(r => r.Confidence == "high"),
+                    mediumConfidence = results.Count(r => r.Confidence == "medium"),
+                    lowConfidence = results.Count(r => r.Confidence == "low"),
+                    failed = results.Count(r => !r.IsValid)
+                }
+            });
+        }
+
+        // Project root
+        if (args.TryGetProperty("rootPath", out var rootEl) && rootEl.ValueKind == JsonValueKind.String)
+        {
+            var root = rootEl.GetString()!;
+            if (!_paths.IsPathAllowed(root)) return WrapText("Root path not allowed");
+            var maxFiles = args.TryGetProperty("maxFiles", out var mf) && mf.ValueKind == JsonValueKind.Number ? mf.GetInt32() : 200;
+            var projectResult = await orchestrator.ConvertProjectAsync(root, maxFiles, forceTier, ct);
+            return WrapJson(new
+            {
+                conversions = projectResult.Conversions.Select(FormatConversionResult),
+                summary = projectResult.Summary
+            });
+        }
+
+        return WrapText("Provide one of: code, path, or rootPath");
+    }
+
+    private static object FormatConversionResult(ConversionResult r)
+    {
+        return new
+        {
+            file = r.FilePath,
+            tier = r.Tier,
+            confidence = r.Confidence,
+            ewsQualifiedName = r.EwsQualifiedName,
+            graphApiName = r.GraphApiName,
+            originalCode = r.OriginalCode,
+            convertedCode = r.ConvertedCode,
+            requiredUsings = r.RequiredUsings,
+            requiredPackage = r.RequiredPackage,
+            diff = r.UnifiedDiff,
+            isValid = r.IsValid,
+            validationErrors = r.ValidationErrors.Any() ? r.ValidationErrors : null
+        };
+    }
+
+    private async Task<object> ApplyConversionAsync(JsonElement args, CancellationToken ct)
+    {
+        var backup = !args.TryGetProperty("backup", out var backupEl) || backupEl.ValueKind != JsonValueKind.False;
+
+        if (!args.TryGetProperty("conversions", out var conversionsEl) || conversionsEl.ValueKind != JsonValueKind.Array)
+            return WrapText("conversions array is required");
+
+        var applied = new List<string>();
+        var errors = new List<string>();
+
+        foreach (var conv in conversionsEl.EnumerateArray())
+        {
+            ct.ThrowIfCancellationRequested();
+            string? file = null;
+            string? convertedCode = null;
+
+            if (conv.TryGetProperty("file", out var fEl) && fEl.ValueKind == JsonValueKind.String)
+                file = fEl.GetString();
+            if (conv.TryGetProperty("convertedCode", out var cEl) && cEl.ValueKind == JsonValueKind.String)
+                convertedCode = cEl.GetString();
+
+            if (string.IsNullOrWhiteSpace(file) || string.IsNullOrWhiteSpace(convertedCode))
+            {
+                errors.Add("Skipped entry: missing file or convertedCode");
+                continue;
+            }
+
+            if (!_paths.IsPathAllowed(file))
+            {
+                errors.Add($"Path not allowed: {file}");
+                continue;
+            }
+
+            if (!File.Exists(file))
+            {
+                errors.Add($"File not found: {file}");
+                continue;
+            }
+
+            if (backup)
+            {
+                File.Copy(file, file + ".bak", overwrite: true);
+            }
+
+            await File.WriteAllTextAsync(file, convertedCode, ct);
+            applied.Add(file);
+        }
+
+        return WrapJson(new { applied, errors, backupCreated = backup });
+    }
+
+    private object ConvertAuth(JsonElement args)
+    {
+        var code = args.GetProperty("code").GetString() ?? string.Empty;
+        var authMethod = args.TryGetProperty("authMethod", out var am) && am.ValueKind == JsonValueKind.String
+            ? am.GetString() ?? "clientCredential"
+            : "clientCredential";
+
+        var result = DeterministicTransformer.TransformAuth(code, authMethod);
+        if (result == null)
+            return WrapText("No ExchangeService or WebCredentials patterns found in the provided code.");
+
+        return WrapJson(FormatConversionResult(result));
+    }
+
     // Resources (roadmap entries)
     public IEnumerable<object> ListResources()
     {
@@ -585,7 +752,9 @@ internal sealed class ToolDispatcher
     return new object[]
         {
             new { name = "migrate-ews-usage", description = "General migration assistance for an EWS SDK usage", inputSchema = new { type="object", properties = new { sdkQualifiedName = new { type="string"}, code = new { type="string"}, goal = new { type="string"}}, required = new[]{"sdkQualifiedName"} } },
-            new { name = "summarize-project-ews", description = "Summarize EWS usage across project", inputSchema = new { type="object", properties = new { rootPath = new { type="string"}}, required = new[]{"rootPath"} } }
+            new { name = "summarize-project-ews", description = "Summarize EWS usage across project", inputSchema = new { type="object", properties = new { rootPath = new { type="string"}}, required = new[]{"rootPath"} } },
+            new { name = "convert-ews-to-graph", description = "Automatically convert EWS code to Microsoft Graph SDK with confidence scoring", inputSchema = new { type="object", properties = new { code = new { type="string", description="EWS code to convert" }, filePath = new { type="string", description="Optional file path" }}, required = new[]{"code"} } },
+            new { name = "migrate-auth", description = "Convert EWS ExchangeService authentication to GraphServiceClient", inputSchema = new { type="object", properties = new { code = new { type="string", description="EWS auth code" }, authMethod = new { type="string", description="Target: clientCredential, interactive, deviceCode, managedIdentity" }}, required = new[]{"code"} } }
         };
     }
 
@@ -604,6 +773,15 @@ internal sealed class ToolDispatcher
                 var root = args.GetProperty("rootPath").GetString() ?? string.Empty;
                 var txt = $"Analyze EWS usage under {root} and summarize migration readiness.";
                 return new { name, messages = new[]{ new { role="user", content = new object[]{ new { type="text", text = txt } } } } };
+            case "convert-ews-to-graph":
+                var convertCode = args.GetProperty("code").GetString() ?? string.Empty;
+                var convertPrompt = $"Analyze the following EWS code and convert each EWS SDK call to its Microsoft Graph SDK equivalent.\n\nFor each conversion:\n1. Show the original EWS code\n2. Show the Graph SDK replacement with confidence level (high/medium/low)\n3. List any required using statements and NuGet packages\n4. Note any gaps or manual steps needed\n\nCode:\n```csharp\n{convertCode}\n```";
+                return new { name, messages = new[]{ new { role = "user", content = new object[]{ new { type="text", text = convertPrompt } } } } };
+            case "migrate-auth":
+                var authCode = args.GetProperty("code").GetString() ?? string.Empty;
+                var authMethodPrompt = args.TryGetProperty("authMethod", out var am2) ? am2.GetString() : "clientCredential";
+                var authPrompt = $"Convert the following EWS authentication code (ExchangeService/WebCredentials) to Microsoft Graph SDK authentication using {authMethodPrompt} flow.\n\nShow the complete replacement including:\n- Required NuGet packages (Microsoft.Graph, Azure.Identity)\n- Using statements\n- GraphServiceClient initialization\n\nEWS Auth Code:\n```csharp\n{authCode}\n```";
+                return new { name, messages = new[]{ new { role = "user", content = new object[]{ new { type="text", text = authPrompt } } } } };
             default:
                 return new { name, messages = Array.Empty<object>() };
         }

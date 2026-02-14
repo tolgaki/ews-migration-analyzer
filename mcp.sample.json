@@ -3,7 +3,11 @@
     "ews-analyzer": {
       "command": "dotnet",
       "args": ["run", "--project", "src/Ews.Code.Analyzer/Ews.Analyzer.McpService/Ews.Analyzer.McpService.csproj"],
-      "env": {},
+      "env": {
+        "LLM_ENDPOINT": "",
+        "LLM_API_KEY": "",
+        "LLM_MODEL": "gpt-4o"
+      },
       "alwaysAllow": true
     }
   }
