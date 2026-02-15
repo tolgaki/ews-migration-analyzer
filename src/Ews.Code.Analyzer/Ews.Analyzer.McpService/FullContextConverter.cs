@@ -38,7 +38,7 @@ internal sealed class FullContextConverter
         var roadmaps = ewsQualifiedNames
             .Select(qn => _navigator.GetMapByEwsSdkQualifiedName(qn))
             .Where(r => r != null)
-            .ToList();
+            .ToList()!;
 
         var systemPrompt = BuildSystemPrompt();
         var userPrompt = BuildUserPrompt(fullClassOrFileCode, roadmaps);

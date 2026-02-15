@@ -147,7 +147,7 @@ var messages = await graphClient.Me.Messages.GetAsync();";
         return sb.ToString();
     }
 
-    private static string BuildRetryPrompt(ConversionResult previousResult, EwsMigrationRoadmap roadmap)
+    private static string BuildRetryPrompt(ConversionResult previousResult, EwsMigrationRoadmap? roadmap)
     {
         var sb = new StringBuilder();
         sb.AppendLine("The previous conversion attempt had compilation errors. Please fix them.");
@@ -168,7 +168,9 @@ var messages = await graphClient.Me.Messages.GetAsync();";
         sb.AppendLine(previousResult.OriginalCode);
         sb.AppendLine("```");
         sb.AppendLine();
-        sb.AppendLine($"Target: {roadmap.GraphApiDisplayName} — {roadmap.GraphApiHttpRequest}");
+        var graphName = roadmap?.GraphApiDisplayName ?? "Graph API equivalent";
+        var graphHttp = roadmap?.GraphApiHttpRequest ?? "";
+        sb.AppendLine($"Target: {graphName}{(string.IsNullOrEmpty(graphHttp) ? "" : $" — {graphHttp}")}");
         sb.AppendLine();
         sb.AppendLine("Please output the corrected code in the same [USINGS] / [CODE] format.");
 

@@ -195,12 +195,39 @@ internal sealed class ConversionValidator
                    msg.Contains("BodyType") ||
                    msg.Contains("ItemBody") ||
                    msg.Contains("Recipient") ||
-                   msg.Contains("EmailAddress");
+                   msg.Contains("EmailAddress") ||
+                   msg.Contains("FileAttachment") ||
+                   msg.Contains("DateTimeTimeZone") ||
+                   msg.Contains("CategoryColor");
         }
-        // CS1061: 'X' does not contain a definition for 'Y' — common when chaining Graph client calls
-        if (d.Id == "CS1061") return true;
-        // CS0103: name does not exist in current context — common for graphClient variable
-        if (d.Id == "CS0103") return true;
+        // CS1061: 'X' does not contain a definition for 'Y' — only tolerate for Graph client chain calls
+        if (d.Id == "CS1061")
+        {
+            return msg.Contains("Me") ||
+                   msg.Contains("Messages") ||
+                   msg.Contains("Events") ||
+                   msg.Contains("Contacts") ||
+                   msg.Contains("MailFolders") ||
+                   msg.Contains("Todo") ||
+                   msg.Contains("Subscriptions") ||
+                   msg.Contains("Outlook") ||
+                   msg.Contains("SendMail") ||
+                   msg.Contains("Attachments") ||
+                   msg.Contains("MessageRules") ||
+                   msg.Contains("MasterCategories") ||
+                   msg.Contains("Delta") ||
+                   msg.Contains("GetAsync") ||
+                   msg.Contains("PostAsync") ||
+                   msg.Contains("PatchAsync") ||
+                   msg.Contains("DeleteAsync") ||
+                   msg.Contains("graphClient") ||
+                   msg.Contains("GraphServiceClient");
+        }
+        // CS0103: name does not exist in current context — only for graphClient variable
+        if (d.Id == "CS0103")
+        {
+            return msg.Contains("graphClient") || msg.Contains("GraphServiceClient");
+        }
         return false;
     }
 

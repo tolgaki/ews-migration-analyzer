@@ -171,7 +171,10 @@ namespace Ews.Analyzer
         private async Task<Solution> InsertGraphSdkConversion(Document document, ExpressionSyntax expression, CancellationToken cancellationToken)
         {
             var root = await document.GetSyntaxRootAsync(cancellationToken).ConfigureAwait(false);
+            if (root == null) return document.Project.Solution;
+
             var semanticModel = await document.GetSemanticModelAsync(cancellationToken).ConfigureAwait(false);
+            if (semanticModel == null) return document.Project.Solution;
 
             var symbolInfo = semanticModel.GetSymbolInfo(expression, cancellationToken);
             var symbol = symbolInfo.Symbol ?? symbolInfo.CandidateSymbols.FirstOrDefault();

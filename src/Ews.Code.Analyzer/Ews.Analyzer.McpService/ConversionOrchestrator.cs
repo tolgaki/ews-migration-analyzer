@@ -150,7 +150,7 @@ internal sealed class ConversionOrchestrator
         CancellationToken ct)
     {
         var roadmap = _navigator.GetMapByEwsSdkQualifiedName(ewsQualifiedName);
-        var effectiveTier = forceTier ?? roadmap.ConversionTier;
+        var effectiveTier = forceTier ?? (roadmap?.ConversionTier ?? 2);
 
         // Tier 1: Deterministic transform
         if (effectiveTier <= 1 || forceTier == null)
@@ -204,21 +204,23 @@ internal sealed class ConversionOrchestrator
         return tier3Result;
     }
 
-    private static ConversionResult CreateFallbackResult(string code, string ewsQualifiedName, int line, string? filePath, EwsMigrationRoadmap roadmap)
+    private static ConversionResult CreateFallbackResult(string code, string ewsQualifiedName, int line, string? filePath, EwsMigrationRoadmap? roadmap)
     {
+        var graphName = roadmap?.GraphApiDisplayName ?? "Graph API equivalent";
+        var docsUrl = roadmap?.GraphApiDocumentationUrl ?? "https://learn.microsoft.com/graph/api/overview";
         return new ConversionResult
         {
             Tier = 0,
             Confidence = "low",
             OriginalCode = code,
-            ConvertedCode = $"// TODO: Manually convert {ewsQualifiedName} to {roadmap.GraphApiDisplayName ?? "Graph API equivalent"}\n// See: {roadmap.GraphApiDocumentationUrl}\n{code}",
+            ConvertedCode = $"// TODO: Manually convert {ewsQualifiedName} to {graphName}\n// See: {docsUrl}\n{code}",
             FilePath = filePath,
             StartLine = line,
             EndLine = line,
             IsValid = false,
             ValidationErrors = new List<string> { "Automatic conversion not available at the configured tier level." },
             EwsQualifiedName = ewsQualifiedName,
-            GraphApiName = roadmap.GraphApiDisplayName
+            GraphApiName = roadmap?.GraphApiDisplayName
         };
     }
 
@@ -241,7 +243,11 @@ internal sealed class ConversionOrchestrator
                 if (doc.RootElement.TryGetProperty("sdkQualifiedName", out var qn))
                     qualifiedName = qn.GetString();
             }
-            catch { }
+            catch (System.Text.Json.JsonException)
+            {
+                // EwsUsage object couldn't be serialized/parsed; skip this diagnostic
+                continue;
+            }
 
             if (!string.IsNullOrEmpty(qualifiedName))
             {

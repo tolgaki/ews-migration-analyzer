@@ -699,13 +699,24 @@ internal sealed class ToolDispatcher
                 continue;
             }
 
-            if (backup)
+            try
             {
-                File.Copy(file, file + ".bak", overwrite: true);
-            }
+                if (backup)
+                {
+                    File.Copy(file, file + ".bak", overwrite: true);
+                }
 
-            await File.WriteAllTextAsync(file, convertedCode, ct);
-            applied.Add(file);
+                await File.WriteAllTextAsync(file, convertedCode, ct);
+                applied.Add(file);
+            }
+            catch (IOException ex)
+            {
+                errors.Add($"Failed to write {file}: {ex.Message}");
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                errors.Add($"Access denied for {file}: {ex.Message}");
+            }
         }
 
         return WrapJson(new { applied, errors, backupCreated = backup });

@@ -40,7 +40,7 @@ internal sealed class HttpLlmClient : ILlmClient
     private readonly string _endpoint;
     private readonly string _apiKey;
     private readonly string _model;
-    private readonly System.Net.Http.HttpClient _http = new();
+    private static readonly System.Net.Http.HttpClient _http = new();
 
     public HttpLlmClient()
     {
@@ -77,13 +77,29 @@ internal sealed class HttpLlmClient : ILlmClient
         var response = await _http.SendAsync(request, ct);
         var json = await response.Content.ReadAsStringAsync(ct);
 
-        // Parse the first choice content from OpenAI-compatible response
-        using var doc = System.Text.Json.JsonDocument.Parse(json);
-        if (doc.RootElement.TryGetProperty("choices", out var choices) &&
-            choices.GetArrayLength() > 0)
+        if (!response.IsSuccessStatusCode)
         {
-            var message = choices[0].GetProperty("message").GetProperty("content").GetString();
-            return message ?? string.Empty;
+            return $"[ERROR] LLM API returned HTTP {(int)response.StatusCode}: {json}";
+        }
+
+        // Parse the first choice content from OpenAI-compatible response
+        try
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(json);
+            if (doc.RootElement.TryGetProperty("choices", out var choices) &&
+                choices.GetArrayLength() > 0)
+            {
+                var firstChoice = choices[0];
+                if (firstChoice.TryGetProperty("message", out var msg) &&
+                    msg.TryGetProperty("content", out var content))
+                {
+                    return content.GetString() ?? string.Empty;
+                }
+            }
+        }
+        catch (System.Text.Json.JsonException)
+        {
+            return $"[ERROR] Failed to parse LLM response: {json}";
         }
 
         return json;
