@@ -202,6 +202,9 @@ internal sealed class ToolDispatcher
         _orchestrator = new Lazy<ConversionOrchestrator>(() => new ConversionOrchestrator(_analysis, _navigator));
     }
 
+    // Expose for testing
+    internal ConversionOrchestrator Orchestrator => _orchestrator.Value;
+
     public IEnumerable<object> ListTools()
     {
         return new object[]
@@ -245,14 +248,26 @@ internal sealed class ToolDispatcher
             }, new[]{"rootPath"}),
             Tool("addAllowedPath","Add an allowed base path for analysis", new Dictionary<string,object>{{"path", new { type="string", description="Directory to allow"}}}, new[]{"path"}),
             Tool("listAllowedPaths","List configured allowed base paths", new Dictionary<string,object>{ }),
-            Tool("convertToGraph","Automatically convert EWS code to Microsoft Graph SDK code using a hybrid 3-tier approach (deterministic, template-LLM, full-context-LLM)", new Dictionary<string,object>{
+            Tool("convertToGraph","Apply deterministic (Tier 1) EWS-to-Graph transforms. For non-deterministic conversions, the AI assistant should use getConversionContext and generate the code itself.", new Dictionary<string,object>{
                 {"code", new { type="string", description="Inline C# code snippet to convert"}},
                 {"path", new { type="string", description="Single file path to convert"}},
                 {"rootPath", new { type="string", description="Project root to convert all files"}},
-                {"tier", new { type="integer", description="Force a specific tier (1=deterministic, 2=template-LLM, 3=full-context-LLM). Default: auto"}},
-                {"dryRun", new { type="boolean", description="If true, return diffs without applying (default true)"}},
                 {"maxFiles", new { type="integer", description="Max files for project scan (default 200)"}}
             }),
+            Tool("getConversionContext","Get full migration context for an EWS operation — Graph equivalent, HTTP spec, docs, prompt guidance — everything the AI assistant needs to generate Graph SDK code itself", new Dictionary<string,object>{
+                {"sdkQualifiedName", new { type="string", description="EWS SDK qualified name (e.g. Microsoft.Exchange.WebServices.Data.ExchangeService.FindItems)"}},
+                {"code", new { type="string", description="Optional: the EWS code snippet for additional context"}}
+            }, new[]{"sdkQualifiedName"}),
+            Tool("getDeterministicConversion","Try a Tier 1 deterministic transform for a single EWS operation. Returns the converted code or null if no pattern exists.", new Dictionary<string,object>{
+                {"code", new { type="string", description="The EWS code to transform"}},
+                {"ewsQualifiedName", new { type="string", description="EWS SDK qualified name"}},
+                {"line", new { type="integer", description="1-based line number (default 1)"}}
+            }, new[]{"code", "ewsQualifiedName"}),
+            Tool("validateCode","Validate that AI-generated Graph SDK code compiles correctly using Roslyn. Submit code the AI generated and get back pass/fail with specific errors.", new Dictionary<string,object>{
+                {"code", new { type="string", description="The converted Graph SDK code to validate"}},
+                {"requiredUsings", new { type="string", description="Using statements (one per line, e.g. 'using Microsoft.Graph;')"}},
+                {"tier", new { type="integer", description="The tier that produced this code (affects confidence scoring). Default: 2"}}
+            }, new[]{"code"}),
             Tool("applyConversion","Apply a previously generated conversion diff to source files", new Dictionary<string,object>{
                 {"conversions", new { type="array", description="Array of {file, diff} objects from convertToGraph output", items = new { type="object" }}},
                 {"backup", new { type="boolean", description="Create .bak files before applying (default true)"}}
@@ -306,6 +321,9 @@ internal sealed class ToolDispatcher
             "addAllowedPath" => AddAllowedPath(args),
             "listAllowedPaths" => ListAllowedPaths(),
             "convertToGraph" => await ConvertToGraphAsync(args, ct),
+            "getConversionContext" => WrapJson(GetConversionContext(args)),
+            "getDeterministicConversion" => WrapJson(GetDeterministicConversion(args)),
+            "validateCode" => WrapJson(ValidateCode(args)),
             "applyConversion" => await ApplyConversionAsync(args, ct),
             "convertAuth" => ConvertAuth(args),
             _ => WrapText($"Unknown tool {name}")
@@ -605,18 +623,118 @@ internal sealed class ToolDispatcher
         return WrapJson(new { totalReferences = total, available, preview, unavailable, readinessPercent = readiness });
     }
 
+    // ─── AI-Driven Architecture Tools ────────────────────────────────
+    // These tools expose structured data and validation so that the AI assistant
+    // (Claude Code, GitHub Copilot) can drive the conversion itself.
+
+    private object GetConversionContext(JsonElement args)
+    {
+        var qn = args.GetProperty("sdkQualifiedName").GetString() ?? string.Empty;
+        var code = args.TryGetProperty("code", out var cEl) && cEl.ValueKind == JsonValueKind.String
+            ? cEl.GetString() : null;
+
+        var rm = _navigator.GetMapByEwsSdkQualifiedName(qn);
+
+        // Check if a deterministic transform exists for this operation
+        var orchestrator = _orchestrator.Value;
+        var hasDeterministicTransform = orchestrator.Transformer.Transform(
+            code ?? "placeholder()", qn, 1) != null;
+
+        return new
+        {
+            ewsSdkQualifiedName = rm.EwsSdkQualifiedName,
+            ewsSdkMethodName = rm.EwsSdkMethodName,
+            ewsSoapOperation = rm.EwsSoapOperation,
+            title = rm.Title,
+            functionalArea = rm.FunctionalArea,
+            graphApiDisplayName = rm.GraphApiDisplayName,
+            graphApiHttpRequest = rm.GraphApiHttpRequest,
+            graphApiStatus = rm.GraphApiStatus,
+            graphApiEta = rm.GraphApiEta,
+            graphApiHasParity = rm.GraphApiHasParity,
+            graphApiGapFillPlan = rm.GraphApiGapFillPlan,
+            graphApiDocumentationUrl = rm.GraphApiDocumentationUrl,
+            ewsDocumentationUrl = rm.EWSDocumentationUrl,
+            copilotPromptTemplate = rm.CopilotPromptTemplate,
+            requiredUsings = rm.GraphRequiredUsings ?? "using Microsoft.Graph;\nusing Microsoft.Graph.Models;",
+            requiredPackage = rm.GraphRequiredPackage ?? "Microsoft.Graph",
+            hasDeterministicTransform,
+            conversionGuidance = rm.GraphApiHasParity
+                ? $"Convert {rm.EwsSdkMethodName} to {rm.GraphApiDisplayName} using Graph SDK v5+ fluent API. HTTP equivalent: {rm.GraphApiHttpRequest}"
+                : $"No Graph API parity for {rm.EwsSdkMethodName}. Gap status: {rm.GraphApiGapFillPlan}. Consider alternative approaches."
+        };
+    }
+
+    private object GetDeterministicConversion(JsonElement args)
+    {
+        var code = args.GetProperty("code").GetString() ?? string.Empty;
+        var qn = args.GetProperty("ewsQualifiedName").GetString() ?? string.Empty;
+        var line = args.TryGetProperty("line", out var lineEl) && lineEl.ValueKind == JsonValueKind.Number
+            ? lineEl.GetInt32() : 1;
+
+        var orchestrator = _orchestrator.Value;
+        var result = orchestrator.Transformer.Transform(code, qn, line);
+
+        if (result == null)
+        {
+            return new
+            {
+                available = false,
+                message = "No deterministic transform available for this operation. Use getConversionContext to get migration guidance, then generate the Graph SDK code yourself."
+            };
+        }
+
+        orchestrator.Validator.Validate(result);
+        return new
+        {
+            available = true,
+            tier = result.Tier,
+            confidence = result.Confidence,
+            convertedCode = result.ConvertedCode,
+            requiredUsings = result.RequiredUsings,
+            requiredPackage = result.RequiredPackage,
+            isValid = result.IsValid,
+            validationErrors = result.ValidationErrors.Any() ? result.ValidationErrors : null,
+            graphApiName = result.GraphApiName
+        };
+    }
+
+    private object ValidateCode(JsonElement args)
+    {
+        var code = args.GetProperty("code").GetString() ?? string.Empty;
+        var usings = args.TryGetProperty("requiredUsings", out var uEl) && uEl.ValueKind == JsonValueKind.String
+            ? uEl.GetString() : null;
+        var tier = args.TryGetProperty("tier", out var tEl) && tEl.ValueKind == JsonValueKind.Number
+            ? tEl.GetInt32() : 2;
+
+        var result = new ConversionResult
+        {
+            Tier = tier,
+            ConvertedCode = code,
+            RequiredUsings = usings,
+            OriginalCode = "(validation request)"
+        };
+
+        _orchestrator.Value.Validator.Validate(result);
+
+        return new
+        {
+            isValid = result.IsValid,
+            confidence = result.Confidence,
+            errors = result.ValidationErrors.Any() ? result.ValidationErrors : null
+        };
+    }
+
     // ─── Conversion Tools ─────────────────────────────────────────────
 
     private async Task<object> ConvertToGraphAsync(JsonElement args, CancellationToken ct)
     {
         var orchestrator = _orchestrator.Value;
-        int? forceTier = args.TryGetProperty("tier", out var tierEl) && tierEl.ValueKind == JsonValueKind.Number
-            ? tierEl.GetInt32() : null;
 
         // Inline code snippet
         if (args.TryGetProperty("code", out var codeEl) && codeEl.ValueKind == JsonValueKind.String)
         {
-            var result = await orchestrator.ConvertSnippetAsync(codeEl.GetString()!, forceTier, ct);
+            var result = await orchestrator.ConvertSnippetAsync(codeEl.GetString()!, null, ct);
             return WrapJson(new
             {
                 conversions = new[] { FormatConversionResult(result) },
@@ -629,7 +747,7 @@ internal sealed class ToolDispatcher
         {
             var path = pathEl.GetString()!;
             if (!_paths.IsPathAllowed(path)) return WrapText("Path not allowed");
-            var results = await orchestrator.ConvertFileAsync(path, forceTier, ct);
+            var results = await orchestrator.ConvertFileAsync(path, null, ct);
             return WrapJson(new
             {
                 conversions = results.Select(FormatConversionResult),
@@ -651,7 +769,7 @@ internal sealed class ToolDispatcher
             var root = rootEl.GetString()!;
             if (!_paths.IsPathAllowed(root)) return WrapText("Root path not allowed");
             var maxFiles = args.TryGetProperty("maxFiles", out var mf) && mf.ValueKind == JsonValueKind.Number ? Math.Clamp(mf.GetInt32(), 1, 5000) : 200;
-            var projectResult = await orchestrator.ConvertProjectAsync(root, maxFiles, forceTier, ct);
+            var projectResult = await orchestrator.ConvertProjectAsync(root, maxFiles, null, ct);
             return WrapJson(new
             {
                 conversions = projectResult.Conversions.Select(FormatConversionResult),
@@ -783,10 +901,10 @@ internal sealed class ToolDispatcher
     {
     return new object[]
         {
-            new { name = "migrate-ews-usage", description = "General migration assistance for an EWS SDK usage", inputSchema = new { type="object", properties = new { sdkQualifiedName = new { type="string"}, code = new { type="string"}, goal = new { type="string"}}, required = new[]{"sdkQualifiedName"} } },
-            new { name = "summarize-project-ews", description = "Summarize EWS usage across project", inputSchema = new { type="object", properties = new { rootPath = new { type="string"}}, required = new[]{"rootPath"} } },
-            new { name = "convert-ews-to-graph", description = "Automatically convert EWS code to Microsoft Graph SDK with confidence scoring", inputSchema = new { type="object", properties = new { code = new { type="string", description="EWS code to convert" }, filePath = new { type="string", description="Optional file path" }}, required = new[]{"code"} } },
-            new { name = "migrate-auth", description = "Convert EWS ExchangeService authentication to GraphServiceClient", inputSchema = new { type="object", properties = new { code = new { type="string", description="EWS auth code" }, authMethod = new { type="string", description="Target: clientCredential, interactive, deviceCode, managedIdentity" }}, required = new[]{"code"} } }
+            new { name = "migrate-ews-usage", description = "Get structured migration guidance for an EWS SDK usage. Returns roadmap context, Graph equivalent, and conversion instructions for the AI assistant to use.", inputSchema = new { type="object", properties = new { sdkQualifiedName = new { type="string"}, code = new { type="string"}, goal = new { type="string"}}, required = new[]{"sdkQualifiedName"} } },
+            new { name = "summarize-project-ews", description = "Summarize EWS usage across project with migration readiness", inputSchema = new { type="object", properties = new { rootPath = new { type="string"}}, required = new[]{"rootPath"} } },
+            new { name = "convert-ews-to-graph", description = "Guide the AI assistant to convert EWS code to Graph SDK. Provides structured context from the migration roadmap.", inputSchema = new { type="object", properties = new { code = new { type="string", description="EWS code to convert" }, filePath = new { type="string", description="Optional file path" }}, required = new[]{"code"} } },
+            new { name = "migrate-auth", description = "Guide the AI assistant to convert EWS authentication to GraphServiceClient", inputSchema = new { type="object", properties = new { code = new { type="string", description="EWS auth code" }, authMethod = new { type="string", description="Target: clientCredential, interactive, deviceCode, managedIdentity" }}, required = new[]{"code"} } }
         };
     }
 

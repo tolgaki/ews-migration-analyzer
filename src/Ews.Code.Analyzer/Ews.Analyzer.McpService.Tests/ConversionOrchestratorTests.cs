@@ -14,7 +14,7 @@ public class ConversionOrchestratorTests
     {
         var analysis = new AnalysisService();
         var navigator = new EwsMigrationNavigator();
-        var orchestrator = new ConversionOrchestrator(analysis, navigator, maxTier: 1);
+        var orchestrator = new ConversionOrchestrator(analysis, navigator);
 
         var code = "class C { void M() { System.Console.WriteLine(1); } }";
         var result = await orchestrator.ConvertSnippetAsync(code);
@@ -26,65 +26,37 @@ public class ConversionOrchestratorTests
     }
 
     [Fact]
-    public async Task ConvertSnippet_Tier1Only_FallsBackToFallbackWhenNoTransform()
+    public async Task ConvertSnippet_UnknownEws_ReturnsGuidanceResult()
     {
         var analysis = new AnalysisService();
         var navigator = new EwsMigrationNavigator();
-        // Max tier 1: will not use LLM
-        var orchestrator = new ConversionOrchestrator(analysis, navigator, maxTier: 1);
+        var orchestrator = new ConversionOrchestrator(analysis, navigator);
 
         // Code with an unknown EWS usage that won't match Tier 1
         var code = "class C { void M() { var x = new Microsoft.Exchange.WebServices.Data.Legacy.LegacyCall(); } }";
         var result = await orchestrator.ConvertSnippetAsync(code);
 
-        // Should return something (either conversion or fallback)
+        // Should return a guidance result (not crash or hang on LLM call)
         result.Should().NotBeNull();
     }
-}
 
-public class TemplateGuidedConverterTests
-{
     [Fact]
-    public void ParseLlmResponse_UsingsAndCode_ParsesCorrectly()
+    public void Validator_IsExposedForStandaloneTool()
     {
-        var response = @"[USINGS]
-using Microsoft.Graph;
-using Microsoft.Graph.Models;
+        var analysis = new AnalysisService();
+        var navigator = new EwsMigrationNavigator();
+        var orchestrator = new ConversionOrchestrator(analysis, navigator);
 
-[CODE]
-var messages = await graphClient.Me.Messages.GetAsync();";
-
-        var (code, usings) = TemplateGuidedConverter.ParseLlmResponse(response);
-
-        code.Should().Contain("graphClient.Me.Messages.GetAsync");
-        usings.Should().Contain("Microsoft.Graph");
+        orchestrator.Validator.Should().NotBeNull();
     }
 
     [Fact]
-    public void ParseLlmResponse_FencedCodeBlocks_ParsesCorrectly()
+    public void Transformer_IsExposedForStandaloneTool()
     {
-        var response = @"```usings
-using Microsoft.Graph;
-```
+        var analysis = new AnalysisService();
+        var navigator = new EwsMigrationNavigator();
+        var orchestrator = new ConversionOrchestrator(analysis, navigator);
 
-```csharp
-var messages = await graphClient.Me.Messages.GetAsync();
-```";
-
-        var (code, usings) = TemplateGuidedConverter.ParseLlmResponse(response);
-
-        code.Should().Contain("graphClient.Me.Messages.GetAsync");
-        usings.Should().Contain("Microsoft.Graph");
-    }
-
-    [Fact]
-    public void ParseLlmResponse_PlainCode_ReturnsAsIs()
-    {
-        var response = "var messages = await graphClient.Me.Messages.GetAsync();";
-
-        var (code, usings) = TemplateGuidedConverter.ParseLlmResponse(response);
-
-        code.Should().Contain("graphClient.Me.Messages.GetAsync");
-        usings.Should().BeNull();
+        orchestrator.Transformer.Should().NotBeNull();
     }
 }

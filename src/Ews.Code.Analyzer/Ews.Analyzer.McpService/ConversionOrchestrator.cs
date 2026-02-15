@@ -10,56 +10,47 @@ using Ews.Analyzer;
 namespace Ews.Analyzer.McpService;
 
 /// <summary>
-/// Orchestrates EWS-to-Graph conversion across three tiers:
-///   Tier 1: Deterministic Roslyn transforms
-///   Tier 2: Template-guided LLM conversion
-///   Tier 3: Full-context LLM conversion
+/// Orchestrates EWS-to-Graph conversion using Tier 1 deterministic transforms only.
+///
+/// Architecture: The AI assistant (Claude Code, GitHub Copilot) is the driver of
+/// code conversion. This orchestrator provides deterministic transforms, analysis,
+/// and validation — the AI handles all non-deterministic code generation itself.
 /// </summary>
 internal sealed class ConversionOrchestrator
 {
     private readonly DeterministicTransformer _tier1;
-    private readonly TemplateGuidedConverter _tier2;
-    private readonly FullContextConverter _tier3;
     private readonly ConversionValidator _validator;
     private readonly AnalysisService _analysis;
     private readonly EwsMigrationNavigator _navigator;
-    private readonly int _maxTier;
 
     public ConversionOrchestrator(
         AnalysisService analysis,
-        EwsMigrationNavigator navigator,
-        ILlmClient? llmClient = null,
-        int maxTier = 3)
+        EwsMigrationNavigator navigator)
     {
         _analysis = analysis;
         _navigator = navigator;
-        _maxTier = maxTier;
         _validator = new ConversionValidator();
         _tier1 = new DeterministicTransformer(navigator);
-
-        var llm = llmClient ?? CreateDefaultLlmClient();
-        _tier2 = new TemplateGuidedConverter(navigator, llm);
-        _tier3 = new FullContextConverter(navigator, llm);
-    }
-
-    private static ILlmClient CreateDefaultLlmClient()
-    {
-        // If LLM_ENDPOINT is configured, use HTTP client; otherwise use MCP relay
-        var endpoint = Environment.GetEnvironmentVariable("LLM_ENDPOINT");
-        if (!string.IsNullOrWhiteSpace(endpoint))
-            return new HttpLlmClient();
-        return new McpRelayLlmClient();
     }
 
     /// <summary>
-    /// Convert a single EWS code snippet.
+    /// Expose the validator for standalone validation via MCP tool.
+    /// </summary>
+    internal ConversionValidator Validator => _validator;
+
+    /// <summary>
+    /// Expose the deterministic transformer for standalone use via MCP tool.
+    /// </summary>
+    internal DeterministicTransformer Transformer => _tier1;
+
+    /// <summary>
+    /// Convert a single EWS code snippet using Tier 1 deterministic transforms.
     /// </summary>
     public async Task<ConversionResult> ConvertSnippetAsync(
         string code,
         int? forceTier = null,
         CancellationToken ct = default)
     {
-        // Analyze the code to find EWS usages
         var analysisResult = await _analysis.AnalyzeSnippetAsync(code, null, ct);
         var ewsUsages = ExtractEwsUsages(analysisResult);
 
@@ -77,13 +68,12 @@ internal sealed class ConversionOrchestrator
             };
         }
 
-        // For single-usage snippets, convert the first usage
         var usage = ewsUsages.First();
-        return await ConvertSingleUsageAsync(code, usage.QualifiedName, usage.Line, null, forceTier, ct);
+        return ConvertSingleUsage(code, usage.QualifiedName, usage.Line, null);
     }
 
     /// <summary>
-    /// Convert all EWS usages in a single file.
+    /// Convert all EWS usages in a single file using Tier 1 deterministic transforms.
     /// </summary>
     public async Task<List<ConversionResult>> ConvertFileAsync(
         string filePath,
@@ -95,11 +85,10 @@ internal sealed class ConversionOrchestrator
         var ewsUsages = ExtractEwsUsages(analysisResult);
 
         var results = new List<ConversionResult>();
-        // Process bottom-to-top so line numbers don't shift
         foreach (var usage in ewsUsages.OrderByDescending(u => u.Line))
         {
             ct.ThrowIfCancellationRequested();
-            var result = await ConvertSingleUsageAsync(code, usage.QualifiedName, usage.Line, filePath, forceTier, ct);
+            var result = ConvertSingleUsage(code, usage.QualifiedName, usage.Line, filePath);
             result.UnifiedDiff = GenerateUnifiedDiff(filePath, code, result);
             results.Add(result);
         }
@@ -108,7 +97,7 @@ internal sealed class ConversionOrchestrator
     }
 
     /// <summary>
-    /// Convert all EWS usages across a project directory.
+    /// Convert all EWS usages across a project directory using Tier 1 deterministic transforms.
     /// </summary>
     public async Task<ProjectConversionResult> ConvertProjectAsync(
         string rootPath,
@@ -139,102 +128,78 @@ internal sealed class ConversionOrchestrator
     }
 
     /// <summary>
-    /// Convert a single EWS usage through the tiered pipeline.
+    /// Convert a single EWS usage using Tier 1 deterministic transform only.
+    /// Returns a guidance result if no deterministic transform is available.
     /// </summary>
-    private async Task<ConversionResult> ConvertSingleUsageAsync(
+    private ConversionResult ConvertSingleUsage(
+        string code,
+        string ewsQualifiedName,
+        int line,
+        string? filePath)
+    {
+        var roadmap = _navigator.GetMapByEwsSdkQualifiedName(ewsQualifiedName);
+
+        // Tier 1: Deterministic transform
+        var tier1Result = _tier1.Transform(code, ewsQualifiedName, line, filePath);
+        if (tier1Result != null)
+        {
+            _validator.Validate(tier1Result);
+            if (tier1Result.IsValid)
+                return tier1Result;
+        }
+
+        // No deterministic transform available — return guidance for AI assistant
+        return CreateGuidanceResult(code, ewsQualifiedName, line, filePath, roadmap);
+    }
+
+    /// <summary>
+    /// Create a result that provides structured guidance for the AI assistant
+    /// to perform the conversion itself, instead of calling an external LLM.
+    /// </summary>
+    private static ConversionResult CreateGuidanceResult(
         string code,
         string ewsQualifiedName,
         int line,
         string? filePath,
-        int? forceTier,
-        CancellationToken ct)
-    {
-        var roadmap = _navigator.GetMapByEwsSdkQualifiedName(ewsQualifiedName);
-        var effectiveTier = forceTier ?? (roadmap?.ConversionTier ?? 2);
-
-        // Tier 1: Deterministic transform
-        if (effectiveTier <= 1 || forceTier == null)
-        {
-            var tier1Result = _tier1.Transform(code, ewsQualifiedName, line, filePath);
-            if (tier1Result != null)
-            {
-                _validator.Validate(tier1Result);
-                if (tier1Result.IsValid)
-                    return tier1Result;
-                // Tier 1 failed validation — fall through to Tier 2
-            }
-        }
-
-        if (_maxTier < 2) return CreateFallbackResult(code, ewsQualifiedName, line, filePath, roadmap);
-
-        // Tier 2: Template-guided LLM
-        if (effectiveTier <= 2 || forceTier == null)
-        {
-            var tier2Result = await _tier2.ConvertAsync(code, ewsQualifiedName, line, filePath, null, ct);
-            _validator.Validate(tier2Result);
-
-            if (tier2Result.IsValid)
-                return tier2Result;
-
-            // Retry once with error context
-            var retryResult = await _tier2.RetryWithErrorsAsync(tier2Result, ct);
-            _validator.Validate(retryResult);
-
-            if (retryResult.IsValid)
-            {
-                retryResult.Confidence = "medium"; // Downgrade since it needed a retry
-                return retryResult;
-            }
-
-            // Tier 2 exhausted — fall through to Tier 3
-        }
-
-        if (_maxTier < 3) return CreateFallbackResult(code, ewsQualifiedName, line, filePath, roadmap);
-
-        // Tier 3: Full-context LLM
-        var tier3Result = await _tier3.ConvertAsync(
-            code,
-            new[] { ewsQualifiedName },
-            line,
-            filePath,
-            ct);
-        _validator.Validate(tier3Result);
-
-        // Return Tier 3 result even if invalid (with errors for human review)
-        return tier3Result;
-    }
-
-    private static ConversionResult CreateFallbackResult(string code, string ewsQualifiedName, int line, string? filePath, EwsMigrationRoadmap? roadmap)
+        EwsMigrationRoadmap? roadmap)
     {
         var graphName = roadmap?.GraphApiDisplayName ?? "Graph API equivalent";
+        var graphHttp = roadmap?.GraphApiHttpRequest ?? "";
         var docsUrl = roadmap?.GraphApiDocumentationUrl ?? "https://learn.microsoft.com/graph/api/overview";
+        var promptTemplate = roadmap?.CopilotPromptTemplate ?? "";
+
+        var guidance = new StringBuilder();
+        guidance.AppendLine($"// AI-ASSISTED CONVERSION NEEDED: {ewsQualifiedName} → {graphName}");
+        if (!string.IsNullOrWhiteSpace(graphHttp))
+            guidance.AppendLine($"// Graph API: {graphHttp}");
+        guidance.AppendLine($"// Docs: {docsUrl}");
+        if (!string.IsNullOrWhiteSpace(promptTemplate))
+            guidance.AppendLine($"// Guidance: {promptTemplate}");
+        guidance.AppendLine(code);
+
         return new ConversionResult
         {
             Tier = 0,
             Confidence = "low",
             OriginalCode = code,
-            ConvertedCode = $"// TODO: Manually convert {ewsQualifiedName} to {graphName}\n// See: {docsUrl}\n{code}",
+            ConvertedCode = guidance.ToString(),
             FilePath = filePath,
             StartLine = line,
             EndLine = line,
             IsValid = false,
-            ValidationErrors = new List<string> { "Automatic conversion not available at the configured tier level." },
+            ValidationErrors = new List<string> { "No deterministic transform available. Use the AI assistant with getConversionContext for guided conversion." },
             EwsQualifiedName = ewsQualifiedName,
             GraphApiName = roadmap?.GraphApiDisplayName
         };
     }
 
-    /// <summary>
-    /// Extract EWS usage information from analysis results.
-    /// </summary>
-    private static List<EwsUsageInfo> ExtractEwsUsages(SnippetAnalysisResult result)
+    internal static List<EwsUsageInfo> ExtractEwsUsages(SnippetAnalysisResult result)
     {
         var usages = new List<EwsUsageInfo>();
         foreach (var d in result.Diagnostics)
         {
             if (d.EwsUsage == null || !d.Id.StartsWith("EWS")) continue;
 
-            // Extract the qualified name from the EwsUsage object
             string? qualifiedName = null;
             try
             {
@@ -245,7 +210,6 @@ internal sealed class ConversionOrchestrator
             }
             catch (System.Text.Json.JsonException)
             {
-                // EwsUsage object couldn't be serialized/parsed; skip this diagnostic
                 continue;
             }
 
@@ -262,9 +226,6 @@ internal sealed class ConversionOrchestrator
         return usages;
     }
 
-    /// <summary>
-    /// Generate a unified diff for a conversion result.
-    /// </summary>
     private static string? GenerateUnifiedDiff(string filePath, string originalCode, ConversionResult result)
     {
         if (string.IsNullOrWhiteSpace(result.ConvertedCode) || result.ConvertedCode == result.OriginalCode)
