@@ -304,7 +304,7 @@ For local development, you can point to a local server. HTTP (non-HTTPS) is allo
 This repository is pre-configured for GitHub Copilot:
 
 - **`.vscode/mcp.json`** — Registers the MCP server so Copilot can use all analyzer and conversion tools
-- **`.github/copilot-instructions.md`** — Gives Copilot project context, architecture knowledge, and Graph SDK code patterns
+- **`.github/copilot-instructions.md`** — Gives Copilot project context, architecture diagram, Graph SDK code patterns, and a **copyable template** for users to paste into their own projects
 
 When you open this repo in VS Code with Copilot, you can immediately ask things like:
 ```
@@ -313,14 +313,16 @@ Use convertToGraph to convert: service.FindItems(WellKnownFolderName.Inbox, new 
 Use getMigrationReadiness to check /path/to/project
 ```
 
-See **[`samples/github-copilot-setup.md`](samples/github-copilot-setup.md)** for the full integration guide with 8 worked examples.
+**To set up Copilot in your own EWS project**, see **[`samples/github-copilot-setup.md`](samples/github-copilot-setup.md)** — includes step-by-step instructions for copying `.vscode/mcp.json` and `.github/copilot-instructions.md` to your repo.
 
 ### Claude Code Integration
 
 This repository is pre-configured for Claude Code:
 
-- **`CLAUDE.md`** — Project context file (architecture, key files, build commands, security rules) — read automatically by Claude Code
-- **`.claude/commands/`** — Custom slash commands for common migration tasks:
+- **`CLAUDE.md`** — Project context file read automatically by Claude Code
+- **`.claude/hooks/session-start.sh`** — SessionStart hook that installs .NET SDK and builds the solution on web sessions
+- **`.claude/settings.json`** — Hook registration
+- **`.claude/commands/`** — Custom slash commands:
 
 | Command | Description |
 |---------|-------------|
@@ -328,6 +330,10 @@ This repository is pre-configured for Claude Code:
 | `/convert-ews [path]` | Convert EWS code to Microsoft Graph SDK |
 | `/convert-auth [code]` | Convert EWS authentication to Graph SDK |
 | `/migration-readiness [path]` | Assess migration readiness of a project |
+| `/suggest-fixes [path]` | Generate specific Graph SDK replacement suggestions |
+| `/roadmap-lookup [operation]` | Look up Graph equivalent for an EWS operation |
+| `/security-sweep [path]` | Run security review on the codebase |
+| `/add-transform [desc]` | Add a new Tier 1 deterministic transform |
 | `/run-tests` | Build and run all tests |
 
 Usage in Claude Code:
@@ -340,18 +346,18 @@ claude
 > /migration-readiness /path/to/my-ews-project
 ```
 
-See **[`samples/claude-code-setup.md`](samples/claude-code-setup.md)** for the full integration guide.
+**To set up Claude Code in your own EWS project**, see **[`samples/claude-code-setup.md`](samples/claude-code-setup.md)** — includes copyable `CLAUDE.md`, all slash command files, and MCP server configuration.
 
 ### Samples and Automation
 
-The `samples/` directory contains integration guides and automation scripts:
+The `samples/` directory contains guides and scripts for integrating with your own projects:
 
 | File | Description |
 |------|-------------|
-| [`github-copilot-setup.md`](samples/github-copilot-setup.md) | Full GitHub Copilot integration guide with examples |
-| [`claude-code-setup.md`](samples/claude-code-setup.md) | Full Claude Code integration guide with slash commands |
-| [`conversation-starters.md`](samples/conversation-starters.md) | Ready-to-use prompts for both platforms |
-| [`mcp-client-example.py`](samples/mcp-client-example.py) | Python script showing programmatic MCP server interaction |
+| [`github-copilot-setup.md`](samples/github-copilot-setup.md) | Copy-to-your-project Copilot setup with examples |
+| [`claude-code-setup.md`](samples/claude-code-setup.md) | Copy-to-your-project Claude Code setup with slash commands |
+| [`conversation-starters.md`](samples/conversation-starters.md) | 15+ ready-to-paste prompts for both platforms |
+| [`mcp-client-example.py`](samples/mcp-client-example.py) | Python script for programmatic MCP server interaction |
 | [`ci-automation.sh`](samples/ci-automation.sh) | Shell script for CI/CD pipeline integration |
 
 ---
