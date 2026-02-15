@@ -299,6 +299,63 @@ For local development, you can point to a local server. HTTP (non-HTTPS) is allo
 
 ---
 
+### GitHub Copilot Integration
+
+This repository is pre-configured for GitHub Copilot:
+
+- **`.vscode/mcp.json`** — Registers the MCP server so Copilot can use all analyzer and conversion tools
+- **`.github/copilot-instructions.md`** — Gives Copilot project context, architecture knowledge, and Graph SDK code patterns
+
+When you open this repo in VS Code with Copilot, you can immediately ask things like:
+```
+Use analyzeCode to check this for EWS usage: [paste code]
+Use convertToGraph to convert: service.FindItems(WellKnownFolderName.Inbox, new ItemView(50))
+Use getMigrationReadiness to check /path/to/project
+```
+
+See **[`samples/github-copilot-setup.md`](samples/github-copilot-setup.md)** for the full integration guide with 8 worked examples.
+
+### Claude Code Integration
+
+This repository is pre-configured for Claude Code:
+
+- **`CLAUDE.md`** — Project context file (architecture, key files, build commands, security rules) — read automatically by Claude Code
+- **`.claude/commands/`** — Custom slash commands for common migration tasks:
+
+| Command | Description |
+|---------|-------------|
+| `/analyze-ews [path]` | Analyze a file or directory for EWS usage |
+| `/convert-ews [path]` | Convert EWS code to Microsoft Graph SDK |
+| `/convert-auth [code]` | Convert EWS authentication to Graph SDK |
+| `/migration-readiness [path]` | Assess migration readiness of a project |
+| `/run-tests` | Build and run all tests |
+
+Usage in Claude Code:
+```bash
+cd ews-migration-analyzer
+claude
+
+> /analyze-ews src/MyApp/Services/MailService.cs
+> /convert-ews src/MyApp/Services/
+> /migration-readiness /path/to/my-ews-project
+```
+
+See **[`samples/claude-code-setup.md`](samples/claude-code-setup.md)** for the full integration guide.
+
+### Samples and Automation
+
+The `samples/` directory contains integration guides and automation scripts:
+
+| File | Description |
+|------|-------------|
+| [`github-copilot-setup.md`](samples/github-copilot-setup.md) | Full GitHub Copilot integration guide with examples |
+| [`claude-code-setup.md`](samples/claude-code-setup.md) | Full Claude Code integration guide with slash commands |
+| [`conversation-starters.md`](samples/conversation-starters.md) | Ready-to-use prompts for both platforms |
+| [`mcp-client-example.py`](samples/mcp-client-example.py) | Python script showing programmatic MCP server interaction |
+| [`ci-automation.sh`](samples/ci-automation.sh) | Shell script for CI/CD pipeline integration |
+
+---
+
 ### Diagnostic Rules
 
 The Roslyn analyzer produces these diagnostics:
