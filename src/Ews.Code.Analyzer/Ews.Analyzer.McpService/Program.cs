@@ -137,13 +137,13 @@ internal static class Program
                     }
                     catch (Exception ex)
                     {
-                        WriteError(id, -32000, ex.Message, new { stack = ex.StackTrace });
+                        WriteError(id, -32000, SanitizeErrorMessage(ex.Message));
                     }
                 });
             }
             catch (Exception ex)
             {
-                WriteError(id, -32000, ex.Message, new { stack = ex.StackTrace });
+                WriteError(id, -32000, SanitizeErrorMessage(ex.Message));
             }
             finally
             {
@@ -167,6 +167,24 @@ internal static class Program
         lock(_writeLock)
         {
             Console.WriteLine(JsonSerializer.Serialize(envelope, jsonOpts));
+        }
+    }
+
+    private static string SanitizeErrorMessage(string message)
+    {
+        // Remove internal file paths from error messages to avoid information disclosure.
+        // Keep only the final segment (filename) if a full path appears.
+        if (string.IsNullOrEmpty(message)) return "An internal error occurred.";
+        try
+        {
+            return System.Text.RegularExpressions.Regex.Replace(
+                message,
+                @"[A-Za-z]:\\[^\s""']+|/(?:home|usr|var|tmp|etc|root)[^\s""']*",
+                m => Path.GetFileName(m.Value) ?? "[path]");
+        }
+        catch
+        {
+            return "An internal error occurred.";
         }
     }
 }
@@ -338,7 +356,7 @@ internal sealed class ToolDispatcher
     {
         var root = args.GetProperty("rootPath").GetString() ?? string.Empty;
     if(!_paths.IsPathAllowed(root)) return WrapText("Root path not allowed");
-        var maxFiles = args.TryGetProperty("maxFiles", out var mf) && mf.ValueKind==JsonValueKind.Number ? mf.GetInt32():500;
+        var maxFiles = args.TryGetProperty("maxFiles", out var mf) && mf.ValueKind==JsonValueKind.Number ? Math.Clamp(mf.GetInt32(), 1, 5000) : 500;
         var includeUsages = args.TryGetProperty("includeUsages", out var iu) && iu.ValueKind==JsonValueKind.True;
         var csFiles = Directory.EnumerateFiles(root, "*.cs", SearchOption.AllDirectories).Take(maxFiles).ToList();
         var analyses = new List<SnippetAnalysisResult>();
@@ -376,13 +394,16 @@ internal sealed class ToolDispatcher
         }
         if (args.TryGetProperty("path", out var pathEl) && pathEl.ValueKind == JsonValueKind.String)
         {
-            var code = File.ReadAllText(pathEl.GetString()!);
-            var res = await _analysis.AnalyzeSnippetAsync(code, pathEl.GetString(), ct);
+            var filePath = pathEl.GetString()!;
+            if (!_paths.IsPathAllowed(filePath)) return Array.Empty<object>();
+            var code = File.ReadAllText(filePath);
+            var res = await _analysis.AnalyzeSnippetAsync(code, filePath, ct);
             return res.Diagnostics.Where(d=> d.EwsUsage!=null).Select(d=> (object)d.EwsUsage!);
         }
         if (args.TryGetProperty("rootPath", out var rootEl) && rootEl.ValueKind == JsonValueKind.String)
         {
             var root = rootEl.GetString()!;
+            if (!_paths.IsPathAllowed(root)) return Array.Empty<object>();
             var usages = new List<object>();
             foreach (var f in Directory.EnumerateFiles(root, "*.cs", SearchOption.AllDirectories).Take(500))
             {
@@ -517,7 +538,7 @@ internal sealed class ToolDispatcher
         {
             var root = rootEl.GetString()!;
             if(!_paths.IsPathAllowed(root)) return WrapText("Root path not allowed");
-            var maxFiles = args.TryGetProperty("maxFiles", out var mf) && mf.ValueKind==JsonValueKind.Number ? mf.GetInt32():200;
+            var maxFiles = args.TryGetProperty("maxFiles", out var mf) && mf.ValueKind==JsonValueKind.Number ? Math.Clamp(mf.GetInt32(), 1, 5000) : 200;
             var files = Directory.EnumerateFiles(root, "*.cs", SearchOption.AllDirectories).Take(maxFiles);
             foreach (var f in files)
             {
@@ -563,7 +584,7 @@ internal sealed class ToolDispatcher
     {
         var root = args.GetProperty("rootPath").GetString() ?? string.Empty;
         if(!_paths.IsPathAllowed(root)) return WrapText("Root path not allowed");
-        var maxFiles = args.TryGetProperty("maxFiles", out var mf) && mf.ValueKind==JsonValueKind.Number ? mf.GetInt32():500;
+        var maxFiles = args.TryGetProperty("maxFiles", out var mf) && mf.ValueKind==JsonValueKind.Number ? Math.Clamp(mf.GetInt32(), 1, 5000) : 500;
         var files = Directory.EnumerateFiles(root, "*.cs", SearchOption.AllDirectories).Take(maxFiles).ToList();
         int available=0, preview=0, unavailable=0, total=0;
         foreach (var f in files)
@@ -629,7 +650,7 @@ internal sealed class ToolDispatcher
         {
             var root = rootEl.GetString()!;
             if (!_paths.IsPathAllowed(root)) return WrapText("Root path not allowed");
-            var maxFiles = args.TryGetProperty("maxFiles", out var mf) && mf.ValueKind == JsonValueKind.Number ? mf.GetInt32() : 200;
+            var maxFiles = args.TryGetProperty("maxFiles", out var mf) && mf.ValueKind == JsonValueKind.Number ? Math.Clamp(mf.GetInt32(), 1, 5000) : 200;
             var projectResult = await orchestrator.ConvertProjectAsync(root, maxFiles, forceTier, ct);
             return WrapJson(new
             {
@@ -924,7 +945,14 @@ internal sealed class PathSecurity
             var full = Path.GetFullPath(path);
             foreach (var root in _allow)
             {
-                if (full.StartsWith(root, StringComparison.OrdinalIgnoreCase)) return true;
+                // Ensure the path is strictly within the allowed directory tree.
+                // Append separator to prevent "/allowed/dir" matching "/allowed/dir-other".
+                var rootWithSep = root.EndsWith(Path.DirectorySeparatorChar.ToString())
+                    ? root
+                    : root + Path.DirectorySeparatorChar;
+                if (full.StartsWith(rootWithSep, StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(full, root, StringComparison.OrdinalIgnoreCase))
+                    return true;
             }
             return false;
         }

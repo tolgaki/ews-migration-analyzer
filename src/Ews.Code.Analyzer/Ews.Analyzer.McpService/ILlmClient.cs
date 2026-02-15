@@ -1,3 +1,4 @@
+using System;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -44,16 +45,27 @@ internal sealed class HttpLlmClient : ILlmClient
 
     public HttpLlmClient()
     {
-        _endpoint = System.Environment.GetEnvironmentVariable("LLM_ENDPOINT") ?? string.Empty;
-        _apiKey = System.Environment.GetEnvironmentVariable("LLM_API_KEY") ?? string.Empty;
-        _model = System.Environment.GetEnvironmentVariable("LLM_MODEL") ?? "gpt-4o";
+        _endpoint = Environment.GetEnvironmentVariable("LLM_ENDPOINT") ?? string.Empty;
+        _apiKey = Environment.GetEnvironmentVariable("LLM_API_KEY") ?? string.Empty;
+        _model = Environment.GetEnvironmentVariable("LLM_MODEL") ?? "gpt-4o";
+
+        // Validate that the endpoint uses HTTPS to protect the API key in transit.
+        if (!string.IsNullOrWhiteSpace(_endpoint) &&
+            !_endpoint.StartsWith("https://", StringComparison.OrdinalIgnoreCase) &&
+            !_endpoint.StartsWith("http://localhost", StringComparison.OrdinalIgnoreCase) &&
+            !_endpoint.StartsWith("http://127.0.0.1", StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException(
+                "LLM_ENDPOINT must use HTTPS (or localhost for development). " +
+                "Sending API keys over unencrypted HTTP is not allowed.");
+        }
     }
 
     public async Task<string> CompleteAsync(string systemPrompt, string userPrompt, CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(_endpoint) || string.IsNullOrWhiteSpace(_apiKey))
         {
-            return $"[ERROR] LLM_ENDPOINT and LLM_API_KEY environment variables are required for HTTP LLM calls.\n\n[PROMPT]\n{systemPrompt}\n\n{userPrompt}";
+            return "[ERROR] LLM_ENDPOINT and LLM_API_KEY environment variables are required for HTTP LLM calls.";
         }
 
         var body = System.Text.Json.JsonSerializer.Serialize(new
@@ -79,7 +91,8 @@ internal sealed class HttpLlmClient : ILlmClient
 
         if (!response.IsSuccessStatusCode)
         {
-            return $"[ERROR] LLM API returned HTTP {(int)response.StatusCode}: {json}";
+            // Do not return raw API response body — it may contain sensitive information.
+            return $"[ERROR] LLM API returned HTTP {(int)response.StatusCode}. Check your LLM_ENDPOINT and LLM_API_KEY configuration.";
         }
 
         // Parse the first choice content from OpenAI-compatible response
@@ -99,7 +112,7 @@ internal sealed class HttpLlmClient : ILlmClient
         }
         catch (System.Text.Json.JsonException)
         {
-            return $"[ERROR] Failed to parse LLM response: {json}";
+            return "[ERROR] Failed to parse LLM response. The endpoint may not be OpenAI-compatible.";
         }
 
         return json;
