@@ -7,8 +7,7 @@
         "LLM_ENDPOINT": "",
         "LLM_API_KEY": "",
         "LLM_MODEL": "gpt-4o"
-      },
-      "alwaysAllow": true
+      }
     }
   }
 }

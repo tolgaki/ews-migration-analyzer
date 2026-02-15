@@ -28,117 +28,307 @@ The EWS Code Analyzer is located in folder `/src/Ews.CodeAnalyzer`.
 
 See the [EWS Code Analyzer Readme](src/Ews.Code.Analyzer/README.md) for more information on how to set up and run the tools.
 
-## MCP Server (GitHub Copilot Integration)
+---
 
-An experimental Model Context Protocol (MCP) server is included to allow GitHub Copilot (and other MCP-aware clients) to:
+## MCP Server (GitHub Copilot / Claude / LLM Integration)
 
-- Analyze snippets / files / directories for EWS usage
-- List EWS SDK invocation sites with Graph migration metadata
-- Retrieve migration roadmap entries (also exposed as MCP resources)
-- Generate a tailored prompt to convert one EWS usage to Microsoft Graph (also via MCP prompts)
-- **Automatically convert EWS code to Microsoft Graph SDK** using a hybrid 3-tier approach
-- Convert EWS authentication (ExchangeService) to Graph SDK authentication (GraphServiceClient)
-- Stream partial progress notifications (when verbose logging enabled)
+An experimental Model Context Protocol (MCP) server enables GitHub Copilot, Claude, and other MCP-aware clients to interact with the EWS Migration Analyzer programmatically. It provides:
+
+- **Code analysis** — Scan snippets, files, or entire projects for EWS SDK usage
+- **Migration roadmap** — Look up EWS-to-Graph migration status for any operation
+- **Automatic code conversion** — Convert EWS code to Microsoft Graph SDK using a hybrid 3-tier approach
+- **Authentication migration** — Convert `ExchangeService`/`WebCredentials` to `GraphServiceClient`
+- **Migration readiness** — Compute how ready a project is for Graph migration
 
 Location: `src/Ews.Code.Analyzer/Ews.Analyzer.McpService`
 
-### Running Locally
+### Quick Start
 
-1. Restore & build:
-	 ```bash
-	 dotnet build src/Ews.Code.Analyzer/Ews.Analyzer.McpService/Ews.Analyzer.McpService.csproj
-	 ```
-2. (Optional) Run standalone and send JSON-RPC lines:
-	 ```bash
-	 dotnet run --project src/Ews.Code.Analyzer/Ews.Analyzer.McpService/Ews.Analyzer.McpService.csproj
-	 ```
+1. **Build the MCP server:**
+   ```bash
+   dotnet build src/Ews.Code.Analyzer/Ews.Analyzer.McpService/Ews.Analyzer.McpService.csproj
+   ```
+
+2. **Register it with your MCP client.** Copy `mcp.sample.json` to your client's configuration location:
+
+   - **GitHub Copilot (VS Code):** `.vscode/mcp.json` in your workspace
+   - **Claude Desktop:** `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS) or `%APPDATA%\Claude\claude_desktop_config.json` (Windows)
+   - **Other MCP clients:** Refer to your client's documentation
+
+3. **Interact via your AI assistant.** Ask it to analyze EWS code, convert to Graph, or check migration readiness.
 
 ### Sample `mcp.json`
 
-Place this in your Copilot client configuration (or use the provided `mcp.sample.json`).
-
 ```json
 {
-	"mcpServers": {
-		"ews-analyzer": {
-			"command": "dotnet",
-			"args": ["run", "--project", "src/Ews.Code.Analyzer/Ews.Analyzer.McpService/Ews.Analyzer.McpService.csproj"],
-			"alwaysAllow": true
-		}
-	}
+  "mcpServers": {
+    "ews-analyzer": {
+      "command": "dotnet",
+      "args": ["run", "--project", "src/Ews.Code.Analyzer/Ews.Analyzer.McpService/Ews.Analyzer.McpService.csproj"],
+      "env": {
+        "LLM_ENDPOINT": "",
+        "LLM_API_KEY": "",
+        "LLM_MODEL": "gpt-4o"
+      }
+    }
+  }
 }
 ```
 
-### Available Tools
+> **Note:** The `env` block is only needed if you want to use Tier 2/3 LLM-powered conversions with a direct API endpoint. See [Configuring an LLM for Automatic Conversion](#configuring-an-llm-for-automatic-conversion) below for details.
+
+---
+
+### Available MCP Tools
 
 | Tool | Purpose |
 |------|---------|
-| analyzeCode | Analyze one or more sources for EWS usage (preferred) |
-| analyzeSnippet | Analyze inline C# code |
-| analyzeFile | Analyze a file path (within repo allowlist) |
-| analyzeProject | Analyze all `*.cs` files under a root (capped) |
-| listEwsUsages | Return just EWS usages with Graph metadata |
-| getRoadmap | Get roadmap by SOAP op or SDK qualified name |
-| generateGraphPrompt | Produce migration prompt for Copilot |
-| suggestGraphFixes | Generate unified diff hunks for EWS usages with Graph parity |
-| getMigrationReadiness | Compute migration readiness score for a project |
-| **convertToGraph** | **Automatically convert EWS code to Graph SDK (hybrid 3-tier)** |
-| **applyConversion** | **Apply previously generated conversion diffs to source files** |
-| **convertAuth** | **Convert EWS auth setup to GraphServiceClient** |
-| setLogging | Toggle verbose notifications |
-| addAllowedPath | Add an allowed base path for analysis |
-| listAllowedPaths | List configured allowed base paths |
+| `analyzeCode` | Analyze one or more sources for EWS usage (preferred entry point) |
+| `analyzeSnippet` | Analyze a single inline C# code snippet |
+| `analyzeFile` | Analyze a file on disk (within allowlist) |
+| `analyzeProject` | Analyze all `*.cs` files under a root directory |
+| `listEwsUsages` | List EWS SDK invocation sites with Graph migration metadata |
+| `getRoadmap` | Get migration roadmap entry by SOAP operation or SDK qualified name |
+| `generateGraphPrompt` | Produce a tailored migration prompt for Copilot |
+| `suggestGraphFixes` | Generate unified diff hunks with TODO comments for actionable EWS usages |
+| `getMigrationReadiness` | Compute migration readiness percentage for a project |
+| **`convertToGraph`** | **Automatically convert EWS code to Graph SDK (hybrid 3-tier)** |
+| **`applyConversion`** | **Apply previously generated conversion diffs to source files** |
+| **`convertAuth`** | **Convert EWS auth setup to GraphServiceClient** |
+| `setLogging` | Toggle verbose progress notifications |
+| `addAllowedPath` | Add an allowed base path for file analysis |
+| `listAllowedPaths` | List configured allowed base paths |
 
-### Automatic Conversion (Hybrid 3-Tier Approach)
+---
 
-The `convertToGraph` tool uses a hybrid strategy to convert EWS code to Microsoft Graph SDK:
+### Automatic Code Conversion (Hybrid 3-Tier Approach)
+
+The `convertToGraph` tool uses a hybrid strategy to convert EWS code to Microsoft Graph SDK v5+:
 
 | Tier | Strategy | Confidence | When Used |
 |------|----------|------------|-----------|
-| **Tier 1** | Deterministic Roslyn transform | High | ~35 common EWS operations with known Graph SDK equivalents |
-| **Tier 2** | Template-guided LLM | High-Medium | Operations with copilot prompt templates, moderate complexity |
-| **Tier 3** | Full-context LLM | Medium-Low | Complex patterns, multi-operation methods, Gap/TBD operations |
+| **Tier 1** | Deterministic Roslyn transform | **High** | ~35 common EWS operations with known 1:1 Graph SDK equivalents (mail CRUD, calendar, contacts, tasks, sync, notifications, inbox rules) |
+| **Tier 2** | Template-guided LLM | **High–Medium** | Operations with prompt templates in the migration roadmap; moderate complexity |
+| **Tier 3** | Full-context LLM | **Medium–Low** | Complex multi-operation methods, Gap/TBD operations, full class refactoring |
 
-Each conversion passes through a **validation gate** (Roslyn compilation check) and is tagged with a confidence level (`high`/`medium`/`low`).
+**How it works:**
 
-**Example usage:**
+1. The tool analyzes your code to find EWS SDK usage sites
+2. For each usage, it selects the best tier based on the operation type
+3. Tier 1 applies deterministic pattern-based transforms (no LLM needed)
+4. If Tier 1 can't handle it, Tier 2 sends a structured prompt to an LLM with roadmap context
+5. If Tier 2 fails validation, Tier 3 sends the full class/file context to the LLM
+6. Every conversion passes through a **Roslyn compilation validation gate**
+7. Each result is tagged with a confidence level (`high`, `medium`, or `low`)
+
+**Example — convert a snippet:**
 ```json
-{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"convertToGraph","arguments":{"code":"service.FindItems(WellKnownFolderName.Inbox, new ItemView(50))"}}}
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "tools/call",
+  "params": {
+    "name": "convertToGraph",
+    "arguments": {
+      "code": "service.FindItems(WellKnownFolderName.Inbox, new ItemView(50))"
+    }
+  }
+}
 ```
 
-**Authentication conversion:**
+**Example — convert a whole file:**
 ```json
-{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"convertAuth","arguments":{"code":"var service = new ExchangeService(); service.Credentials = new WebCredentials(\"user\", \"pass\");","authMethod":"clientCredential"}}}
+{
+  "jsonrpc": "2.0",
+  "id": 2,
+  "method": "tools/call",
+  "params": {
+    "name": "convertToGraph",
+    "arguments": {
+      "path": "/path/to/your/EwsMailService.cs"
+    }
+  }
+}
 ```
 
-To use Tier 2/3 with a direct LLM backend (instead of MCP host relay), set environment variables:
-- `LLM_ENDPOINT` — API endpoint (e.g., Azure OpenAI)
-- `LLM_API_KEY` — API key
-- `LLM_MODEL` — Model name (default: `gpt-4o`)
+**Example — convert an entire project:**
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 3,
+  "method": "tools/call",
+  "params": {
+    "name": "convertToGraph",
+    "arguments": {
+      "rootPath": "/path/to/your/project",
+      "maxFiles": 200
+    }
+  }
+}
+```
 
-### Resources & Prompts
+**Example — convert authentication:**
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 4,
+  "method": "tools/call",
+  "params": {
+    "name": "convertAuth",
+    "arguments": {
+      "code": "var service = new ExchangeService(); service.Credentials = new WebCredentials(\"user\", \"pass\");",
+      "authMethod": "clientCredential"
+    }
+  }
+}
+```
 
-MCP Resources (URI pattern `roadmap/<EwsSoapOperation>`) expose individual roadmap entries.
+Supported `authMethod` values: `clientCredential` (default), `interactive`, `deviceCode`, `managedIdentity`
 
-MCP Prompts:
+---
+
+### Configuring an LLM for Automatic Conversion
+
+**Tier 1 (deterministic) conversions work without any LLM configuration.** For Tier 2 and Tier 3 conversions, you have two options:
+
+#### Option A: MCP Host Relay (Default — No Configuration Needed)
+
+If you're using the MCP server inside an AI assistant (GitHub Copilot, Claude, etc.), the assistant itself acts as the LLM. The server sends structured prompts to the MCP host, and the host handles the actual LLM call. **This is the default behavior and requires no extra setup.**
+
+#### Option B: Direct LLM API (For Standalone / CI / Custom Use)
+
+If you want the server to call an LLM directly (for example, in a CI pipeline, a custom script, or when running standalone), set these environment variables:
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `LLM_ENDPOINT` | Yes | The API endpoint URL (must use HTTPS) |
+| `LLM_API_KEY` | Yes | Your API key or token |
+| `LLM_MODEL` | No | Model name (default: `gpt-4o`) |
+
+**The server uses the OpenAI-compatible chat completions API format**, which is supported by Azure OpenAI, OpenAI, and many other providers.
+
+#### Setup for Azure OpenAI
+
+1. Deploy a model (e.g., `gpt-4o`) in your [Azure OpenAI resource](https://portal.azure.com/#create/Microsoft.CognitiveServicesOpenAI)
+2. Get your endpoint and API key from the Azure portal (Keys and Endpoint section)
+3. Set the environment variables:
+
+```json
+{
+  "mcpServers": {
+    "ews-analyzer": {
+      "command": "dotnet",
+      "args": ["run", "--project", "src/Ews.Code.Analyzer/Ews.Analyzer.McpService/Ews.Analyzer.McpService.csproj"],
+      "env": {
+        "LLM_ENDPOINT": "https://YOUR-RESOURCE.openai.azure.com/openai/deployments/YOUR-DEPLOYMENT/chat/completions?api-version=2024-08-01-preview",
+        "LLM_API_KEY": "your-azure-openai-api-key",
+        "LLM_MODEL": "gpt-4o"
+      }
+    }
+  }
+}
+```
+
+> **Azure OpenAI note:** Use the full deployment URL including `/chat/completions` and the `api-version` query parameter. The API key goes in the `Authorization: Bearer` header (which Azure OpenAI accepts when using the OpenAI-compatible endpoint format).
+
+#### Setup for OpenAI
+
+1. Get your API key from [platform.openai.com/api-keys](https://platform.openai.com/api-keys)
+2. Set the environment variables:
+
+```json
+{
+  "env": {
+    "LLM_ENDPOINT": "https://api.openai.com/v1/chat/completions",
+    "LLM_API_KEY": "sk-your-openai-api-key",
+    "LLM_MODEL": "gpt-4o"
+  }
+}
+```
+
+#### Setup for Anthropic (Claude API)
+
+The server uses the OpenAI-compatible format. To use Anthropic's Claude directly, you would need an OpenAI-compatible proxy or adapter. Alternatively, use Option A (MCP Host Relay) by running the MCP server inside Claude Desktop.
+
+#### Setup for Local Models (Ollama, LM Studio, etc.)
+
+For local development, you can point to a local server. HTTP (non-HTTPS) is allowed for `localhost` and `127.0.0.1`:
+
+```json
+{
+  "env": {
+    "LLM_ENDPOINT": "http://localhost:11434/v1/chat/completions",
+    "LLM_API_KEY": "ollama",
+    "LLM_MODEL": "llama3.1"
+  }
+}
+```
+
+#### Security Notes for LLM Configuration
+
+- **HTTPS is enforced** for all non-localhost endpoints. The server will refuse to start if `LLM_ENDPOINT` uses plain HTTP on a remote host.
+- **API keys are never logged** and are not included in error messages.
+- **Your source code is sent to the LLM** when using Tier 2/3 conversions. Be aware of your organization's data handling policies.
+- **Environment variables** are the only supported method for passing credentials. Do not hardcode API keys in configuration files that are committed to source control.
+
+---
+
+### MCP Resources and Prompts
+
+**Resources** (URI pattern: `roadmap/{EwsSoapOperation}`) expose individual migration roadmap entries as structured data.
+
+**Prompts:**
 
 | Prompt | Description | Required Args |
 |--------|-------------|---------------|
-| migrate-ews-usage | Migration guidance for a single usage | sdkQualifiedName |
-| summarize-project-ews | High-level summary request (client should call analyzeProject first) | rootPath |
-| convert-ews-to-graph | Automatically convert EWS code to Graph SDK with confidence scoring | code |
-| migrate-auth | Convert EWS authentication to GraphServiceClient | code |
+| `migrate-ews-usage` | Migration guidance for a single EWS SDK usage | `sdkQualifiedName` |
+| `summarize-project-ews` | High-level EWS usage summary across a project | `rootPath` |
+| `convert-ews-to-graph` | Convert EWS code to Graph SDK with confidence scoring | `code` |
+| `migrate-auth` | Convert EWS authentication to GraphServiceClient | `code` |
 
-### Security / Limits
+---
 
-- File & project tools are restricted to the current working directory tree.
-- Max project files scanned defaults to 500 (override with `maxFiles`).
-- Basic in-memory hashing cache avoids re-analyzing unchanged code.
-- Conversion diffs are returned in dry-run mode by default; use `applyConversion` to write changes.
+### Security and Access Controls
+
+- **Path allowlist:** File and project operations are restricted to the current working directory by default. Use `addAllowedPath` to extend access to additional directories.
+- **Max file limits:** Project scans are capped at configurable limits (default 200–500 files, max 5000) to prevent resource exhaustion.
+- **Dry-run by default:** The `convertToGraph` tool returns conversion diffs without modifying files. Use `applyConversion` separately to write changes (with automatic `.bak` backup files).
+- **Error sanitization:** Internal file paths and stack traces are not exposed in error responses.
+- **HTTPS enforcement:** Direct LLM API calls require HTTPS (except localhost for development).
+- **No credential logging:** API keys and authentication tokens are never included in logs or error messages.
+
+---
+
+### Diagnostic Rules
+
+The Roslyn analyzer produces these diagnostics:
+
+| Rule ID | Severity | Description |
+|---------|----------|-------------|
+| EWS000 | Warning | Unclassified EWS reference detected |
+| EWS001 | Error | Graph API equivalent is **available** (GA) — action required |
+| EWS002 | Warning | Graph API equivalent is **in preview** |
+| EWS003 | Warning | Graph API equivalent is **not available** (Gap/TBD) |
+| EWS004 | Info | EWS reference count summary (end of compilation) |
+| EWS005 | Warning | Custom call-to-action (end of compilation) |
 
 ### Roadmap
 
-Future improvements may include: MSBuild-based full project loading, richer caching, cancellation, telemetry opt-in, and expanded Tier 1 deterministic templates.
+Future improvements may include: MSBuild-based full project loading, richer caching, telemetry opt-in, expanded Tier 1 deterministic templates, and Anthropic Messages API native support.
+
+---
+
+## Sample Migrations
+
+The `/src/Ews.Sample.Migration/` directory contains step-by-step sample migration scenarios:
+
+- `00-Baseline` — Starting point with EWS code
+- `01-Build_Understanding` — Understand the EWS usage patterns
+- `02-Add_Instrumentation` — Add logging and monitoring
+- `03-Add_Tests` — Build test coverage before migration
+- `04-Refactor` — Refactor to prepare for Graph SDK migration
+
+---
 
 ## Feedback
 
@@ -147,7 +337,7 @@ We welcome your feedback on the tools in this repo and also on your migration ex
 ## Learn More
 
 - [Deprecation of Exchange Web Services in Exchange Online](https://aka.ms/ews1pageGH)
-- [Microsoft 365 Reports in the admin center – EWS usage](https://aka.ms/EwsAdminReports)
+- [Microsoft 365 Reports in the admin center -- EWS usage](https://aka.ms/EwsAdminReports)
 - [Exchange Web Services (EWS) to Microsoft Graph API mappings](https://aka.ms/ewsMapGH)
 
 ## Contributing
@@ -166,7 +356,7 @@ contact [opencode@microsoft.com](mailto:opencode@microsoft.com) with any additio
 
 ## Trademarks
 
-This project may contain trademarks or logos for projects, products, or services. Authorized use of Microsoft 
+This project may contain trademarks or logos for projects, products, or services. Authorized use of Microsoft
 trademarks or logos is subject to and must follow [Microsoft's Trademark & Brand Guidelines](https://www.microsoft.com/en-us/legal/intellectualproperty/trademarks/usage/general).
 Use of Microsoft trademarks or logos in modified versions of this project must not cause confusion or imply Microsoft sponsorship.
 Any use of third-party trademarks or logos are subject to those third-party's policies.
