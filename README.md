@@ -36,6 +36,8 @@ An experimental Model Context Protocol (MCP) server is included to allow GitHub 
 - List EWS SDK invocation sites with Graph migration metadata
 - Retrieve migration roadmap entries (also exposed as MCP resources)
 - Generate a tailored prompt to convert one EWS usage to Microsoft Graph (also via MCP prompts)
+- **Automatically convert EWS code to Microsoft Graph SDK** using a hybrid 3-tier approach
+- Convert EWS authentication (ExchangeService) to Graph SDK authentication (GraphServiceClient)
 - Stream partial progress notifications (when verbose logging enabled)
 
 Location: `src/Ews.Code.Analyzer/Ews.Analyzer.McpService`
@@ -71,13 +73,48 @@ Place this in your Copilot client configuration (or use the provided `mcp.sample
 
 | Tool | Purpose |
 |------|---------|
+| analyzeCode | Analyze one or more sources for EWS usage (preferred) |
 | analyzeSnippet | Analyze inline C# code |
 | analyzeFile | Analyze a file path (within repo allowlist) |
 | analyzeProject | Analyze all `*.cs` files under a root (capped) |
 | listEwsUsages | Return just EWS usages with Graph metadata |
 | getRoadmap | Get roadmap by SOAP op or SDK qualified name |
 | generateGraphPrompt | Produce migration prompt for Copilot |
+| suggestGraphFixes | Generate unified diff hunks for EWS usages with Graph parity |
+| getMigrationReadiness | Compute migration readiness score for a project |
+| **convertToGraph** | **Automatically convert EWS code to Graph SDK (hybrid 3-tier)** |
+| **applyConversion** | **Apply previously generated conversion diffs to source files** |
+| **convertAuth** | **Convert EWS auth setup to GraphServiceClient** |
 | setLogging | Toggle verbose notifications |
+| addAllowedPath | Add an allowed base path for analysis |
+| listAllowedPaths | List configured allowed base paths |
+
+### Automatic Conversion (Hybrid 3-Tier Approach)
+
+The `convertToGraph` tool uses a hybrid strategy to convert EWS code to Microsoft Graph SDK:
+
+| Tier | Strategy | Confidence | When Used |
+|------|----------|------------|-----------|
+| **Tier 1** | Deterministic Roslyn transform | High | ~35 common EWS operations with known Graph SDK equivalents |
+| **Tier 2** | Template-guided LLM | High-Medium | Operations with copilot prompt templates, moderate complexity |
+| **Tier 3** | Full-context LLM | Medium-Low | Complex patterns, multi-operation methods, Gap/TBD operations |
+
+Each conversion passes through a **validation gate** (Roslyn compilation check) and is tagged with a confidence level (`high`/`medium`/`low`).
+
+**Example usage:**
+```json
+{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"convertToGraph","arguments":{"code":"service.FindItems(WellKnownFolderName.Inbox, new ItemView(50))"}}}
+```
+
+**Authentication conversion:**
+```json
+{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"convertAuth","arguments":{"code":"var service = new ExchangeService(); service.Credentials = new WebCredentials(\"user\", \"pass\");","authMethod":"clientCredential"}}}
+```
+
+To use Tier 2/3 with a direct LLM backend (instead of MCP host relay), set environment variables:
+- `LLM_ENDPOINT` — API endpoint (e.g., Azure OpenAI)
+- `LLM_API_KEY` — API key
+- `LLM_MODEL` — Model name (default: `gpt-4o`)
 
 ### Resources & Prompts
 
@@ -89,16 +126,19 @@ MCP Prompts:
 |--------|-------------|---------------|
 | migrate-ews-usage | Migration guidance for a single usage | sdkQualifiedName |
 | summarize-project-ews | High-level summary request (client should call analyzeProject first) | rootPath |
+| convert-ews-to-graph | Automatically convert EWS code to Graph SDK with confidence scoring | code |
+| migrate-auth | Convert EWS authentication to GraphServiceClient | code |
 
 ### Security / Limits
 
 - File & project tools are restricted to the current working directory tree.
 - Max project files scanned defaults to 500 (override with `maxFiles`).
 - Basic in-memory hashing cache avoids re-analyzing unchanged code.
+- Conversion diffs are returned in dry-run mode by default; use `applyConversion` to write changes.
 
 ### Roadmap
 
-Future improvements may include: MSBuild-based full project loading, code fix diffs (patch suggestions), richer caching, cancellation, and telemetry opt-in.
+Future improvements may include: MSBuild-based full project loading, richer caching, cancellation, telemetry opt-in, and expanded Tier 1 deterministic templates.
 
 ## Feedback
 

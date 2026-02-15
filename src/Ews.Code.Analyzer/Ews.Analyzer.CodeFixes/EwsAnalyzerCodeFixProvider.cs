@@ -64,13 +64,24 @@ namespace Ews.Analyzer
             var expression = root.FindNode(diagnostic.Location.SourceSpan).DescendantNodesAndSelf().OfType<ExpressionSyntax>()
                 .First();
 
-            // Register a code action that will invoke the fix.
+            // Register the existing code action (Copilot instructions).
             context.RegisterCodeFix(
                 CodeAction.Create(
                     title: CodeFixResources.CodeFixTitle,
                     createChangedSolution: c => InsertReferenceToGraphApi(context.Document, expression, c),
                     equivalenceKey: nameof(CodeFixResources.CodeFixTitle)),
                 diagnostic);
+
+            // For EWS001 (Graph parity available), also register a direct conversion action.
+            if (diagnostic.Id == EwsAnalyzer.graphAvailableDiagnosticId)
+            {
+                context.RegisterCodeFix(
+                    CodeAction.Create(
+                        title: "Convert to Microsoft Graph SDK",
+                        createChangedSolution: c => InsertGraphSdkConversion(context.Document, expression, c),
+                        equivalenceKey: "ConvertToGraphSdk"),
+                    diagnostic);
+            }
         }
 
         private async Task<Solution> InsertReferenceToGraphApi(Document document, ExpressionSyntax expression, CancellationToken cancellationToken)
@@ -155,6 +166,55 @@ namespace Ews.Analyzer
             // Return the new solution with the updated document.
             return newDocument.Project.Solution;
 
+        }
+
+        private async Task<Solution> InsertGraphSdkConversion(Document document, ExpressionSyntax expression, CancellationToken cancellationToken)
+        {
+            var root = await document.GetSyntaxRootAsync(cancellationToken).ConfigureAwait(false);
+            if (root == null) return document.Project.Solution;
+
+            var semanticModel = await document.GetSemanticModelAsync(cancellationToken).ConfigureAwait(false);
+            if (semanticModel == null) return document.Project.Solution;
+
+            var symbolInfo = semanticModel.GetSymbolInfo(expression, cancellationToken);
+            var symbol = symbolInfo.Symbol ?? symbolInfo.CandidateSymbols.FirstOrDefault();
+            var fullyQualifiedName = symbol?.ToString()?.Replace("()", "") ?? string.Empty;
+
+            var navigator = new EwsMigrationNavigator();
+            var map = navigator.GetMapByEwsSdkQualifiedName(fullyQualifiedName);
+
+            // Build Graph SDK replacement code comment block
+            string graphCode;
+            if (!string.IsNullOrEmpty(map?.GraphApiHttpRequest) && !string.IsNullOrEmpty(map?.GraphApiDisplayName))
+            {
+                graphCode = $"// Graph SDK equivalent ({map.GraphApiDisplayName}): {map.GraphApiHttpRequest}";
+            }
+            else
+            {
+                graphCode = $"// Graph SDK equivalent: see {map?.GraphApiDocumentationUrl ?? "https://learn.microsoft.com/graph/api/overview"}";
+            }
+
+            var graphTemplate = map?.GraphCodeTemplate;
+            string conversionBlock;
+            if (!string.IsNullOrWhiteSpace(graphTemplate))
+            {
+                // Use deterministic template
+                conversionBlock = $"// Converted from EWS ({fullyQualifiedName}) to Graph SDK:\n// {graphCode}\n{graphTemplate}";
+            }
+            else
+            {
+                // No deterministic template available — insert guidance comment
+                conversionBlock = $"{graphCode}\n// TODO: Use the convertToGraph MCP tool for automatic conversion of {fullyQualifiedName}";
+            }
+
+            var nextTrivia = root.FindTrivia(expression.Span.End + 1);
+            var newLine = SyntaxFactory.EndOfLine(Environment.NewLine);
+            var commentTrivia = SyntaxFactory.Comment($"/* Graph SDK Conversion:\n{conversionBlock}\n*/");
+
+            var triviaList = SyntaxFactory.TriviaList(newLine, commentTrivia, newLine);
+            var newRoot = root.InsertTriviaAfter(nextTrivia, triviaList);
+            var newDocument = document.WithSyntaxRoot(newRoot);
+            return newDocument.Project.Solution;
         }
     }
 }
